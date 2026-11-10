@@ -1,4 +1,4 @@
-# AM MIDI 2.0 Lib
+# MIDI 2.0 Lib
 
 A MIDI 2.0 Library
 
