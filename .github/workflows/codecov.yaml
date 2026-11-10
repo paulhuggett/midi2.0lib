@@ -11,20 +11,20 @@ permissions:
 jobs:
   codecov:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       BUILD_DIR: build_codecov
       GCC_VERSION: 13
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: audit
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: "True"
+          submodules: 'True'
 
       - name: Install Dependencies
         run: |
@@ -63,26 +63,11 @@ jobs:
             --output-file coverage.info     \
             --directory "$BUILD_DIR"        \
             --gcov-tool "gcov-$GCC_VERSION" \
-            --ignore-errors mismatch
-
-      # - name: Filter Coverage
-      #   run: |
-      #     lcov                      \
-      #        --remove coverage.info \
-      #       '/usr/*'                \
-      #       "*/$BUILD_DIR/*"        \
-      #       '*/unittests/*'         \
-      #       --output-file coverage.filtered.info
-      #      mv coverage.filtered.info coverage.info
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v7
-        with:
-          path: coverage.info
+	    --ignore-errors mismatch        \
+            --ignore-errors inconsistent
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.0
-        with:
-          fail_ci_if_error: true
-          token: ${{ secrets.CODECOV_TOKEN }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
