@@ -51,7 +51,7 @@ jobs:
           ctest                      \
             --test-dir "$BUILD_DIR"  \
             --output-junit junit.xml \
-            --parallel $(nproc)      \
+            --parallel "$(nproc)"    \
             --output-on-failure      \
             --verbose
 
@@ -63,7 +63,7 @@ jobs:
             --output-file coverage.info     \
             --directory "$BUILD_DIR"        \
             --gcov-tool "gcov-$GCC_VERSION" \
-	    --ignore-errors mismatch        \
+            --ignore-errors mismatch        \
             --ignore-errors inconsistent
 
       - name: Upload coverage reports to Codecov
