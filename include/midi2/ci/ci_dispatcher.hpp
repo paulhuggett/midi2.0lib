@@ -1,4 +1,4 @@
-//===-- UMP Types -------------------------------------------------------------*- C++ -*-===//
+//===-- CI Dispatcher ---------------------------------------------------------*- C++ -*-===//
 //
 // midi2 library under the MIT license.
 // See https://github.com/paulhuggett/AM_MIDI2.0Lib/blob/main/LICENSE for license information.
@@ -31,6 +31,11 @@
 
 namespace midi2::ci {
 
+/// \brief Satisfied by types which can be used to configure a ci_dispatcher.
+///
+/// The type must have a buffer_size member (the size of the buffer used to hold message bodies), a context member
+/// (whose value is passed to each of the message handlers), and members named system, management, profile,
+/// property_exchange, and process_inquiry which satisfy the corresponding dispatcher_backend concepts.
 template <typename T>
 concept ci_dispatcher_config = requires(T v) {
   { v.buffer_size } -> std::convertible_to<std::size_t>;
@@ -42,31 +47,56 @@ concept ci_dispatcher_config = requires(T v) {
   { v.process_inquiry } -> dispatcher_backend::process_inquiry<decltype(v.context)>;
 };
 
+/// \brief A configuration type for the ci_dispatcher which uses std::function<> for all of the available callbacks.
+///
+/// \tparam Context  The type of the context object. This is passed to the callbacks to enable sharing of context.
+/// \tparam BufferSize  The size of the buffer used to hold the body of a message.
 template <typename Context, std::size_t BufferSize> struct function_config {
+  /// \brief Constructs the configuration.
+  /// \param c  The context object which is passed to each of the callbacks.
   constexpr explicit function_config(Context c = Context{}) : context{c} {}
 
-  [[no_unique_address]] Context context;
-  static constexpr auto buffer_size = BufferSize;
-  dispatcher_backend::system_function<Context> system;
-  dispatcher_backend::management_function<Context> management;
-  dispatcher_backend::profile_function<Context> profile;
+  [[no_unique_address]] Context context;                ///< The context object passed to the callbacks.
+  static constexpr auto buffer_size = BufferSize;       ///< The size of the buffer used to hold the body of a message.
+  dispatcher_backend::system_function<Context> system;  ///< Callbacks for system events.
+  dispatcher_backend::management_function<Context> management;  ///< Callbacks for management messages.
+  dispatcher_backend::profile_function<Context> profile;        ///< Callbacks for profile configuration messages.
+  /// Callbacks for property exchange messages.
   dispatcher_backend::property_exchange_function<Context> property_exchange;
+  /// Callbacks for process inquiry messages.
   dispatcher_backend::process_inquiry_function<Context> process_inquiry;
 };
 
+/// \brief Satisfied by trivially copyable types with an alignment of 1, which can be safely accessed in a byte buffer.
 template <typename T>
 concept unaligned_copyable = alignof(T) == 1 && std::is_trivially_copyable_v<T>;
 
+/// \brief Accepts the bytes of a MIDI-CI message, decodes the message, and calls the configured handler.
+///
+/// The bytes passed to dispatch() begin with the Universal System Exclusive ID (0x7E) that follows the System
+/// Exclusive Start (0xF0) byte. Messages whose Destination MUID is neither the broadcast MUID nor accepted by the
+/// system.check_muid() handler are ignored.
+///
+/// \note Once a message has been dispatched, any further bytes are discarded: a new dispatcher is required for each
+///   message.
+///
+/// \tparam Config  A type satisfying ci_dispatcher_config (or a std::reference_wrapper<> of one) which provides the
+///   context value, the buffer size, and the message handlers.
 template <typename Config>
   requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
 class ci_dispatcher {
 public:
   /// Type of input messages
   using input_type = std::byte;
+  /// The configuration type.
   using config_type = std::remove_reference_t<std::unwrap_reference_t<Config>>;
 
+  /// \brief Constructs a dispatcher with a device ID and group of 0 and a default-constructed configuration.
   constexpr ci_dispatcher() noexcept : ci_dispatcher{b7{0U}, 0U, Config{}} {}
 
+  /// \brief Constructs a dispatcher with a device ID and group of 0.
+  /// \tparam OtherConfig  A type which is convertible to \p Config.
+  /// \param config  The configuration which provides the context value and the message handlers.
   template <typename OtherConfig>
     requires(std::convertible_to<OtherConfig, Config> &&
              !std::is_same_v<std::remove_cvref_t<OtherConfig>, ci_dispatcher>)
@@ -75,6 +105,11 @@ public:
     static_assert(midi2::dispatcher<Config, std::byte, decltype(*this)>);
   }
 
+  /// \brief Constructs a dispatcher.
+  /// \tparam OtherConfig  A type which is convertible to \p Config.
+  /// \param device_id  The device ID which is recorded in the header passed to the message handlers.
+  /// \param group  The UMP group which is passed to the system.check_muid() handler.
+  /// \param config  The configuration which provides the context value and the message handlers.
   template <typename OtherConfig>
     requires(std::convertible_to<OtherConfig, Config>)
   constexpr explicit ci_dispatcher(b7 const device_id, std::uint8_t const group, OtherConfig&& config)
@@ -83,12 +118,25 @@ public:
     static_assert(midi2::dispatcher<Config, std::byte, decltype(*this)>);
   }
 
+  /// \brief Sets the UMP group which is passed to the system.check_muid() handler.
+  /// \param group  The UMP group.
   constexpr void set_group(std::uint8_t const group) noexcept { group_ = group; }
+  /// \brief Sets the device ID which is recorded in the header passed to the message handlers.
+  /// \param device_id  The device ID.
   constexpr void set_device_id(b7 const device_id) noexcept { header_.device_id = device_id; }
 
+  /// \brief Processes a byte of a MIDI-CI message.
+  ///
+  /// When the byte completes a message, the corresponding handler is called.
+  ///
+  /// \param s7  The byte.
   void dispatch(std::byte s7);
 
+  /// \brief Returns the dispatcher's configuration.
+  /// \returns A const reference to the dispatcher's configuration.
   [[nodiscard]] constexpr config_type const& config() const noexcept { return config_; }
+  /// \brief Returns the dispatcher's configuration.
+  /// \returns A reference to the dispatcher's configuration.
   [[nodiscard]] constexpr config_type& config() noexcept { return config_; }
 
 private:
@@ -149,6 +197,8 @@ private:
   void process_inquiry_midi_message_report_end();
 };
 
+/// \brief Deduces the dispatcher's configuration type from the constructor arguments.
+/// \tparam Context  The configuration type.
 template <typename Context> ci_dispatcher(b7, std::uint8_t, Context) -> ci_dispatcher<Context>;
 
 template <typename Config>
@@ -670,15 +720,15 @@ void ci_dispatcher<Config>::property_exchange() {
 
   auto& pe = c.property_exchange;
   switch (type_) {
-  case pe_get: pe.get(c.context, header_, get ::make(chunk, request, header)); break;
-  case pe_get_reply: pe.get_reply(c.context, header_, get_reply ::make(chunk, request, header, data)); break;
-  case pe_set: pe.set(c.context, header_, set ::make(chunk, request, header, data)); break;
-  case pe_set_reply: pe.set_reply(c.context, header_, set_reply ::make(chunk, request, header, data)); break;
-  case pe_sub: pe.subscription(c.context, header_, subscription ::make(chunk, request, header, data)); break;
+  case pe_get: pe.get(c.context, header_, get::make(chunk, request, header)); break;
+  case pe_get_reply: pe.get_reply(c.context, header_, get_reply::make(chunk, request, header, data)); break;
+  case pe_set: pe.set(c.context, header_, set::make(chunk, request, header, data)); break;
+  case pe_set_reply: pe.set_reply(c.context, header_, set_reply::make(chunk, request, header, data)); break;
+  case pe_sub: pe.subscription(c.context, header_, subscription::make(chunk, request, header, data)); break;
   case pe_sub_reply:
     pe.subscription_reply(c.context, header_, subscription_reply::make(chunk, request, header, data));
     break;
-  case pe_notify: pe.notify(c.context, header_, notify ::make(chunk, request, header, data)); break;
+  case pe_notify: pe.notify(c.context, header_, notify::make(chunk, request, header, data)); break;
   default: assert(false); break;
   }
   consumer_ = &ci_dispatcher::discard;
@@ -796,6 +846,14 @@ void ci_dispatcher<Config>::dispatch(std::byte const s7) {
   }
 }
 
+/// \brief Creates a ci_dispatcher which uses std::function<> for all of the message handlers.
+///
+/// \tparam Context  The type of the context object.
+/// \tparam BufferSize  The size of the buffer used to hold the body of a message.
+/// \param device_id  The device ID which is recorded in the header passed to the message handlers.
+/// \param group  The UMP group which is passed to the system.check_muid() handler.
+/// \param context  The context object which is passed to each of the handlers.
+/// \returns The new dispatcher.
 template <typename Context, std::size_t BufferSize>
 ci_dispatcher<function_config<Context, BufferSize>> make_function_dispatcher(b7 const device_id,
                                                                              std::uint8_t const group,
@@ -804,6 +862,12 @@ ci_dispatcher<function_config<Context, BufferSize>> make_function_dispatcher(b7 
   return ci_dispatcher{device_id, group, config{std::forward<Context>(context)}};
 }
 
+/// \brief Creates a ci_dispatcher which uses std::function<> for all of the message handlers, with a device ID and
+/// group of 0 and a default-constructed context.
+///
+/// \tparam Context  The type of the context object.
+/// \tparam BufferSize  The size of the buffer used to hold the body of a message.
+/// \returns The new dispatcher.
 template <typename Context, std::size_t BufferSize>
 ci_dispatcher<function_config<Context, BufferSize>> make_function_dispatcher() {
   using config = function_config<Context, BufferSize>;

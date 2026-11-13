@@ -32,6 +32,9 @@ namespace midi2::ump {
 // See M2-104-UM (UMP Format & MIDI 2.0 Protocol v.1.1.2 2023-10-27)
 //    Table 4 Message Type (MT) Allocation
 
+/// \brief Returns the number of 32-bit words in a UMP message of the given message type.
+/// \param mt  The message type.
+/// \returns The number of 32-bit words in a message of type \p mt.
 [[nodiscard]] constexpr unsigned ump_message_size(message_type const mt) {
   using enum message_type;
   switch (mt) {
@@ -55,6 +58,11 @@ namespace midi2::ump {
   }
 }
 
+/// \brief Satisfied by types which can be used to configure a ump_dispatcher.
+///
+/// The type must have a member named context (whose value is passed to each of the message handlers) and members
+/// named utility, system, m1cvm, data64, m2cvm, data128, stream, and flex which satisfy the corresponding
+/// dispatcher_backend concepts.
 template <typename T>
 concept ump_dispatcher_config = requires(T v) {
   { v.context };
@@ -75,32 +83,46 @@ concept ump_dispatcher_config = requires(T v) {
 /// \tparam Context  The type of the context object. This is passed to the callbacks to enable sharing
 ///   of context.
 template <typename Context> struct function_config {
+  /// \brief Constructs the configuration.
+  /// \param c  The context object which is passed to each of the callbacks.
   explicit function_config(Context c) : context{std::move(c)} {}
 
-  [[no_unique_address]] Context context;
-  dispatcher_backend::utility_function<Context> utility;
-  dispatcher_backend::system_function<Context> system;
-  dispatcher_backend::m1cvm_function<Context> m1cvm;
-  dispatcher_backend::data64_function<Context> data64;
-  dispatcher_backend::m2cvm_function<Context> m2cvm;
-  dispatcher_backend::data128_function<Context> data128;
-  dispatcher_backend::stream_function<Context> stream;
-  dispatcher_backend::flex_data_function<Context> flex;
+  [[no_unique_address]] Context context;                  ///< The context object passed to the callbacks.
+  dispatcher_backend::utility_function<Context> utility;  ///< Callbacks for utility messages.
+  dispatcher_backend::system_function<Context> system;    ///< Callbacks for system messages.
+  dispatcher_backend::m1cvm_function<Context> m1cvm;      ///< Callbacks for MIDI 1.0 channel voice messages.
+  dispatcher_backend::data64_function<Context> data64;    ///< Callbacks for data 64-bit (SysEx7) messages.
+  dispatcher_backend::m2cvm_function<Context> m2cvm;      ///< Callbacks for MIDI 2.0 channel voice messages.
+  dispatcher_backend::data128_function<Context> data128;  ///< Callbacks for data 128-bit messages.
+  dispatcher_backend::stream_function<Context> stream;    ///< Callbacks for UMP stream messages.
+  dispatcher_backend::flex_data_function<Context> flex;   ///< Callbacks for flex data messages.
 };
 
+/// \brief Satisfied by types which have a word() member function returning a value convertible to std::uint32_t.
 template <typename T>
 concept word_memfun = requires(T a) {
   { a.word() } -> std::convertible_to<std::uint32_t>;
 };
 
+/// \brief Accepts a sequence of 32-bit UMP words, assembles them into complete messages, and calls the configured
+/// handler for each message.
+///
+/// Messages whose message type or status is reserved or not recognized are passed to the utility.unknown() handler.
+///
+/// \tparam Config  A type satisfying ump_dispatcher_config (or a std::reference_wrapper<> of one) which provides the
+///   context value and the message handlers.
 template <typename Config>
   requires ump_dispatcher_config<std::unwrap_reference_t<Config>>
 class ump_dispatcher {
 public:
   /// Type of input messages
   using input_type = std::uint32_t;
+  /// The configuration type.
   using config_type = std::remove_reference_t<std::unwrap_reference_t<Config>>;
 
+  /// \brief Constructs a dispatcher.
+  /// \tparam OtherConfig  A type which is convertible to \p Config.
+  /// \param config  The configuration which provides the context value and the message handlers.
   template <typename OtherConfig>
     requires(std::convertible_to<OtherConfig, Config> &&
              !std::is_same_v<std::remove_cvref_t<OtherConfig>, ump_dispatcher>)
@@ -108,12 +130,18 @@ public:
     static_assert(midi2::dispatcher<Config, std::uint32_t, decltype(*this)>);
   }
 
+  /// \brief Discards any partially assembled message.
   void reset() {
     // Note that this member function has to be defined in the class declaration to avoid a spurious GCC
     // warning that the function is defined but not used. See <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=79001>
     pos_ = 0;
     std::ranges::fill(message_, std::uint8_t{0});
   }
+  /// \brief Processes a 32-bit UMP word.
+  ///
+  /// When the word completes a message, the corresponding handler is called.
+  ///
+  /// \param ump  The UMP word.
   void dispatch(std::uint32_t const ump) {
     // Note that this member function has to be defined in the class declaration to avoid a spurious GCC
     // warning that the function is defined but not used. See <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=79001>
@@ -149,7 +177,11 @@ public:
     }
   }
 
+  /// \brief Returns the dispatcher's configuration.
+  /// \returns A reference to the dispatcher's configuration.
   [[nodiscard]] constexpr config_type& config() noexcept { return config_; }
+  /// \brief Returns the dispatcher's configuration.
+  /// \returns A const reference to the dispatcher's configuration.
   [[nodiscard]] constexpr config_type const& config() const noexcept { return config_; }
 
 private:
@@ -172,6 +204,8 @@ private:
   [[no_unique_address]] Config config_;
 };
 
+/// \brief Deduces the dispatcher's configuration type from the constructor argument.
+/// \tparam T  The configuration type.
 template <typename T> ump_dispatcher(T) -> ump_dispatcher<T>;
 
 // utility message
@@ -481,6 +515,14 @@ void ump_dispatcher<Config>::flex_data_message() {
   }
 }
 
+/// \brief Creates a ump_dispatcher which uses std::function<> for all of the message handlers.
+///
+/// Handlers are installed using the on_...() member functions of the configuration's members. For example:
+/// `dispatcher.config().m1cvm.on_note_on(...)`.
+///
+/// \tparam Context  The type of the context object.
+/// \param context  The context object which is passed to each of the handlers.
+/// \returns The new dispatcher.
 template <typename Context>
 ump_dispatcher<function_config<Context>> make_ump_function_dispatcher(Context&& context = Context{}) {
   return ump_dispatcher{function_config{std::forward<Context>(context)}};
