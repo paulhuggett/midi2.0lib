@@ -112,14 +112,15 @@ private:
       if (!is_status_byte(s) || is_system_real_time_message(s)) {
         // Not a status byte or a system real-time message, so always emit. Don't update running status.
         output.push_back(s);
-      } else {
-        // If this doesn't match the current running status byte then emit it.
-        if (!status || *status != s) {
-          output.push_back(s);
-        }
-        // Update running status.
-        status = s;
+        return;
       }
+      // Running status applies only to channel messages. A System Common status byte (0xF0-0xF7) is always emitted.
+      // Recording it as the last status cancels running status for the following channel message and allows the
+      // sysex handlers to detect that a System Exclusive message is in progress.
+      if (s >= std::byte{0xF0} || status != s) {
+        output.push_back(s);
+      }
+      status = s;
     }
 
     /// \returns true if the message should be filtered; false if the message should be allowed.
