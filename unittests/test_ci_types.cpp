@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+
 #include "midi2/ci/ci_types.hpp"
 
 namespace {
@@ -48,6 +50,26 @@ TEST(LE7, FourByte) {
   EXPECT_EQ(from_le7(byte_array<4>{zero, zero, zero, one}), b28{0x200000U});
   EXPECT_EQ(from_le7(byte_array<4>{zero, zero, zero, max}), b28{0xFE00000U});
   EXPECT_EQ(from_le7(byte_array<4>{max, max, max, max}), b28{0xFFFFFFFU});
+}
+
+// M2-103-UM Common Rules for Property Exchange v1.2, Table 15 Reply Status Codes.
+TEST(PEStatus, ValuesMatchSpecification) {
+  using midi2::ci::pe_status;
+  EXPECT_EQ(std::to_underlying(pe_status::ok), 200);
+  EXPECT_EQ(std::to_underlying(pe_status::accepted), 201);
+  EXPECT_EQ(std::to_underlying(pe_status::resource_unavailable), 341);
+  EXPECT_EQ(std::to_underlying(pe_status::bad_data), 342);
+  EXPECT_EQ(std::to_underlying(pe_status::too_many_reqs), 343);
+  EXPECT_EQ(std::to_underlying(pe_status::bad_req), 400);
+  EXPECT_EQ(std::to_underlying(pe_status::req_unauthorized), 403);
+  EXPECT_EQ(std::to_underlying(pe_status::resource_unsupported), 404);
+  EXPECT_EQ(std::to_underlying(pe_status::resource_not_allowed), 405);
+  EXPECT_EQ(std::to_underlying(pe_status::flow_control_not_supported), 406);
+  EXPECT_EQ(std::to_underlying(pe_status::flow_control_required), 407);
+  EXPECT_EQ(std::to_underlying(pe_status::payload_too_large), 413);
+  EXPECT_EQ(std::to_underlying(pe_status::unsupported_media_type), 415);
+  EXPECT_EQ(std::to_underlying(pe_status::invalid_data_version), 445);
+  EXPECT_EQ(std::to_underlying(pe_status::internal_device_error), 500);
 }
 
 }  // end anonymous namespace
