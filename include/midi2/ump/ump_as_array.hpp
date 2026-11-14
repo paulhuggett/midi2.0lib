@@ -238,7 +238,7 @@ public:
   template <typename U>
     requires(std::is_same_v<std::remove_const_t<T>, std::remove_const_t<U>>)
   friend constexpr std::strong_ordering operator<=>(iterator_base const& lhs, iterator_base<U> const& rhs) noexcept {
-    if (auto const c = std::compare_three_way{}(lhs.owner_, rhs.owner_); c != 0) {
+    if (auto const c = std::compare_three_way{}(lhs.owner_, rhs.owner_); std::is_neq(c)) {
       return c;
     }
     return lhs.index_ <=> rhs.index_;
