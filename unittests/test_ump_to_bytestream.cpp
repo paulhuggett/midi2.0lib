@@ -340,4 +340,81 @@ TEST(UMPToBytestream, Sysex) {
                   std::byte{0x00}, std::byte{0xF7}));
 }
 
+/// Converts each of the given UMP messages to its constituent words and appends them to a vector.
+template <typename... Messages> std::vector<std::uint32_t> words(Messages const&... messages) {
+  std::vector<std::uint32_t> result;
+  auto const push_back = [&result](auto const v) {
+    result.push_back(std::uint32_t{v});
+    return false;
+  };
+  (midi2::ump::apply(messages, push_back), ...);
+  return result;
+}
+
+// Running status applies only to channel messages. Every System Common message must carry its status byte, even if it
+// is the same as that of the preceding message.
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, RepeatedTimeCodeKeepsStatus) {
+  constexpr auto tc0 = 0x23U;
+  constexpr auto tc1 = 0x45U;
+  auto const input =
+      words(midi2::ump::system::midi_time_code{}.time_code(tc0), midi2::ump::system::midi_time_code{}.time_code(tc1));
+  EXPECT_THAT(convert(input),
+              ElementsAre(midi2::to_byte(timing_code), std::byte{tc0}, midi2::to_byte(timing_code), std::byte{tc1}));
+}
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, RepeatedSongPositionPointerKeepsStatus) {
+  auto const input = words(midi2::ump::system::song_position_pointer{}.position_lsb(0x01).position_msb(0x02),
+                           midi2::ump::system::song_position_pointer{}.position_lsb(0x03).position_msb(0x04));
+  EXPECT_THAT(convert(input), ElementsAre(midi2::to_byte(spp), std::byte{0x01}, std::byte{0x02}, midi2::to_byte(spp),
+                                          std::byte{0x03}, std::byte{0x04}));
+}
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, RepeatedSongSelectKeepsStatus) {
+  auto const input = words(midi2::ump::system::song_select{}.song(0x10), midi2::ump::system::song_select{}.song(0x11));
+  EXPECT_THAT(convert(input),
+              ElementsAre(midi2::to_byte(song_select), std::byte{0x10}, midi2::to_byte(song_select), std::byte{0x11}));
+}
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, RepeatedTuneRequestKeepsStatus) {
+  auto const input = words(midi2::ump::system::tune_request{}, midi2::ump::system::tune_request{});
+  EXPECT_THAT(convert(input), ElementsAre(midi2::to_byte(tune_request), midi2::to_byte(tune_request)));
+}
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, RepeatedSysexInOneKeepsStatus) {
+  auto const message = midi2::ump::data64::sysex7_in_1{}.number_of_bytes(1).data0(0x7D);
+  auto const input = words(message, message);
+  EXPECT_THAT(convert(input), ElementsAre(std::byte{0xF0}, std::byte{0x7D}, std::byte{0xF7}, std::byte{0xF0},
+                                          std::byte{0x7D}, std::byte{0xF7}));
+}
+// A System Common message cancels running status, so the next channel message must carry its status byte.
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, SystemCommonCancelsRunningStatus) {
+  constexpr auto channel = 3U;
+  auto const note = midi2::ump::m1cvm::note_on{}.channel(channel).note(60).velocity(100);
+  auto const input = words(note, midi2::ump::system::tune_request{}, note);
+  constexpr auto status = midi2::to_byte(note_on) | std::byte{channel};
+  EXPECT_THAT(convert(input), ElementsAre(status, std::byte{60}, std::byte{100}, midi2::to_byte(tune_request), status,
+                                          std::byte{60}, std::byte{100}));
+}
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, SysexCancelsRunningStatus) {
+  constexpr auto channel = 3U;
+  auto const note = midi2::ump::m1cvm::note_on{}.channel(channel).note(60).velocity(100);
+  auto const input = words(note, midi2::ump::data64::sysex7_in_1{}.number_of_bytes(1).data0(0x7D), note);
+  constexpr auto status = midi2::to_byte(note_on) | std::byte{channel};
+  EXPECT_THAT(convert(input), ElementsAre(status, std::byte{60}, std::byte{100}, std::byte{0xF0}, std::byte{0x7D},
+                                          std::byte{0xF7}, status, std::byte{60}, std::byte{100}));
+}
+// A System Real Time message does not affect running status.
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, RealTimeKeepsRunningStatus) {
+  constexpr auto channel = 3U;
+  auto const input =
+      words(midi2::ump::m1cvm::note_on{}.channel(channel).note(60).velocity(100), midi2::ump::system::timing_clock{},
+            midi2::ump::m1cvm::note_on{}.channel(channel).note(62).velocity(101));
+  EXPECT_THAT(convert(input), ElementsAre(midi2::to_byte(note_on) | std::byte{channel}, std::byte{60}, std::byte{100},
+                                          midi2::to_byte(timing_clock), std::byte{62}, std::byte{101}));
+}
+
 }  // end anonymous namespace
