@@ -81,9 +81,11 @@ public:
   /// \brief The type of output to a bytestream
   using output_type = std::byte;
 
+  /// \brief Constructs a translator which passes messages from all groups.
   constexpr to_bytestream() = default;
 
-  /// Checks if the output has no elements
+  /// \brief Checks if the output has no elements
+  /// \returns True if there are no bytes waiting to be popped; false otherwise.
   [[nodiscard]] constexpr bool empty() const noexcept { return context_.output.empty(); }
   /// \brief Pops and returns the next available byte for the bytestream
   /// \return The next available byte
@@ -94,16 +96,17 @@ public:
   }
 
   /// \brief Provides a word of UMP input to the translator
-  /// \param ump The byte of input to be translated
+  /// \param ump  The word of input to be translated
   void push(input_type const ump) { dispatcher_.dispatch(ump); }
 
   /// \brief Filter the output to only include messages from the specified groups
-  /// \param group_bitmap A bitmap indicating which groups should be included in the output
+  /// \param group_bitmap  A bitmap indicating which groups should be included in the output
   constexpr void group_filter(std::uint16_t const group_bitmap) noexcept {
     context_.only_groups = group_bitmap == 0 ? std::uint16_t{0xFFFF} : group_bitmap;
   }
   /// \brief Restore the translator to its original state.
-  /// Any in-flight messages are lost.
+  ///
+  /// Any in-flight messages are lost and the group filter is reset to pass all groups.
   constexpr void reset() noexcept { context_.reset(); }
 
 private:
@@ -143,46 +146,76 @@ private:
   };
 
   struct to_bytestream_config {
-    ///\brief Handlers for the SYSTEM COMMON and SYSTEM REAL TIME groups of messages.
+    /// \brief Handlers for the SYSTEM COMMON and SYSTEM REAL TIME groups of messages.
     class system {
     public:
+      /// \brief Writes a MIDI Time Code message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void midi_time_code(context_type* const ctxt, ump::system::midi_time_code const& in) {
         static_assert(message_size<status::timing_code>() == 2);
         system::push(ctxt, in.group(), status::timing_code, std::byte{in.time_code()});
       }
+      /// \brief Writes a Song Position Pointer message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void song_position_pointer(context_type* const ctxt,
                                                   ump::system::song_position_pointer const& in) {
         static_assert(message_size<status::spp>() == 3);
         system::push(ctxt, in.group(), status::spp, std::byte{in.position_lsb()}, std::byte{in.position_msb()});
       }
+      /// \brief Writes a Song Select message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void song_select(context_type* const ctxt, ump::system::song_select const& in) {
         static_assert(message_size<status::song_select>() == 2);
         system::push(ctxt, in.group(), status::song_select, std::byte{in.song()});
       }
+      /// \brief Writes a Tune Request message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void tune_request(context_type* const ctxt, ump::system::tune_request const& in) {
         static_assert(message_size<status::tune_request>() == 1);
         system::push(ctxt, in.group(), status::tune_request);
       }
+      /// \brief Writes a Timing Clock message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void timing_clock(context_type* const ctxt, ump::system::timing_clock const& in) {
         static_assert(message_size<status::timing_clock>() == 1);
         system::push(ctxt, in.group(), status::timing_clock);
       }
+      /// \brief Writes a Start message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void seq_start(context_type* const ctxt, ump::system::sequence_start const& in) {
         static_assert(message_size<status::sequence_start>() == 1);
         system::push(ctxt, in.group(), status::sequence_start);
       }
+      /// \brief Writes a Continue message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void seq_continue(context_type* const ctxt, ump::system::sequence_continue const& in) {
         static_assert(message_size<status::sequence_continue>() == 1);
         system::push(ctxt, in.group(), status::sequence_continue);
       }
+      /// \brief Writes a Stop message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void seq_stop(context_type* const ctxt, ump::system::sequence_stop const& in) {
         static_assert(message_size<status::sequence_stop>() == 1);
         system::push(ctxt, in.group(), status::sequence_stop);
       }
+      /// \brief Writes a Active Sensing message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void active_sensing(context_type* const ctxt, ump::system::active_sensing const& in) {
         static_assert(message_size<status::active_sensing>() == 1);
         system::push(ctxt, in.group(), status::active_sensing);
       }
+      /// \brief Writes a Reset message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void reset(context_type* const ctxt, ump::system::reset const& in) {
         static_assert(message_size<status::system_reset>() == 1);
         system::push(ctxt, in.group(), status::system_reset);
@@ -212,6 +245,9 @@ private:
     /// \brief Handlers for the MIDI 1.0 CHANNEL VOICE group of messages.
     class m1cvm {
     public:
+      /// \brief Writes a MIDI 1.0 Note Off message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void note_off(context_type* const ctxt, ump::m1cvm::note_off const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -221,6 +257,9 @@ private:
         ctxt->push_back(std::byte{in.note()});
         ctxt->push_back(std::byte{in.velocity()});
       }
+      /// \brief Writes a MIDI 1.0 Note On message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void note_on(context_type* const ctxt, ump::m1cvm::note_on const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -230,6 +269,9 @@ private:
         ctxt->push_back(std::byte{in.note()});
         ctxt->push_back(std::byte{in.velocity()});
       }
+      /// \brief Writes a MIDI 1.0 Poly Pressure message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void poly_pressure(context_type* const ctxt, ump::m1cvm::poly_pressure const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -239,6 +281,9 @@ private:
         ctxt->push_back(std::byte{in.note()});
         ctxt->push_back(std::byte{in.pressure()});
       }
+      /// \brief Writes a MIDI 1.0 Control Change message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void control_change(context_type* const ctxt, ump::m1cvm::control_change const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -248,6 +293,9 @@ private:
         ctxt->push_back(std::byte{in.controller()});
         ctxt->push_back(std::byte{in.value()});
       }
+      /// \brief Writes a MIDI 1.0 Program Change message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void program_change(context_type* const ctxt, ump::m1cvm::program_change const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -256,6 +304,9 @@ private:
         ctxt->push_back(to_byte(status::program_change) | std::byte{in.channel()});
         ctxt->push_back(std::byte{in.program()});
       }
+      /// \brief Writes a MIDI 1.0 Channel Pressure message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void channel_pressure(context_type* const ctxt, ump::m1cvm::channel_pressure const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -264,6 +315,9 @@ private:
         ctxt->push_back(to_byte(status::channel_pressure) | std::byte{in.channel()});
         ctxt->push_back(std::byte{in.data()});
       }
+      /// \brief Writes a MIDI 1.0 Pitch Bend message to the bytestream unless its group is filtered.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static constexpr void pitch_bend(context_type* const ctxt, ump::m1cvm::pitch_bend const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -277,6 +331,10 @@ private:
     /// \brief Handlers for the DATA 64 BIT group of messages.
     class data64 {
     public:
+      /// \brief Translates a Complete System Exclusive in One UMP message unless its group is filtered.
+      /// Emits the complete message, including the 0xF0 and 0xF7 bytes. A message with no data bytes is discarded.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static void sysex7_in_1(context_type* const ctxt, ump::data64::sysex7_in_1 const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -287,6 +345,10 @@ private:
           ctxt->push_back(sysex_stop);
         }
       }
+      /// \brief Translates a System Exclusive Start message unless its group is filtered.
+      /// Emits 0xF0 followed by the message data bytes.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static void sysex7_start(context_type* const ctxt, ump::data64::sysex7_start const& in) {
         if (ctxt->filter_message(in)) {
           return;
@@ -294,6 +356,11 @@ private:
         ctxt->push_back(sysex_start);
         data64::write_sysex_bytes(ctxt, in);
       }
+      /// \brief Translates a System Exclusive Continue message unless its group is filtered.
+      /// Emits the message data bytes. The message is discarded if it was not preceded by a System Exclusive Start
+      /// message.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static void sysex7_continue(context_type* const ctxt, ump::data64::sysex7_continue const& in) {
         // Skip this message if we're filtering the associated group or if we didn't see a preceding sysex
         // start message.
@@ -302,6 +369,11 @@ private:
         }
         data64::write_sysex_bytes(ctxt, in);
       }
+      /// \brief Translates a System Exclusive End message unless its group is filtered.
+      /// Emits the message data bytes followed by 0xF7. The message is discarded if it was not preceded by a System
+      /// Exclusive Start message.
+      /// \param ctxt  The translator context.
+      /// \param in  The incoming message.
       static void sysex7_end(context_type* const ctxt, ump::data64::sysex7_end const& in) {
         // Skip this message if we're filtering the associated group or if we didn't see a preceding sysex
         // start message.
@@ -340,9 +412,9 @@ private:
     };
     context_type* context = nullptr;
     [[no_unique_address]] ump::dispatcher_backend::utility_null<decltype(context)> utility{};
-    [[no_unique_address]] class system system {};
-    [[no_unique_address]] class m1cvm m1cvm {};
-    [[no_unique_address]] class data64 data64 {};
+    [[no_unique_address]] class system system{};
+    [[no_unique_address]] class m1cvm m1cvm{};
+    [[no_unique_address]] class data64 data64{};
     [[no_unique_address]] ump::dispatcher_backend::m2cvm_null<decltype(context)> m2cvm{};
     [[no_unique_address]] ump::dispatcher_backend::data128_null<decltype(context)> data128{};
     [[no_unique_address]] ump::dispatcher_backend::stream_null<decltype(context)> stream{};

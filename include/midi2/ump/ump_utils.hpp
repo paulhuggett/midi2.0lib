@@ -20,20 +20,22 @@
 
 namespace midi2::ump {
 
+/// \brief MIDI 1.0 Control Change numbers which are used when translating between MIDI 1.0 and MIDI 2.0.
+///
 /// The MIDI 1.0 Specification defines Control Change indexes 98, 99, 100, and
 /// 101 (0x62, 0x63, 0x64, and 0x65) to be used as compound sequences for
 /// Non-Registered Parameter Number and Registered Parameter Number control
 /// messages. These set destinations for Control Change index 6/38 (0x06/0x26),
 /// Data Entry.
 enum class control : std::uint8_t {
-  bank_select = 0x00,
-  bank_select_lsb = 0x20,
-  data_entry_msb = 0x06,
-  data_entry_lsb = 0x26,
-  rpn_lsb = 0x64,
-  rpn_msb = 0x65,
-  nrpn_lsb = 0x62,
-  nrpn_msb = 0x63,
+  bank_select = 0x00,      ///< Bank Select (MSB)
+  bank_select_lsb = 0x20,  ///< Bank Select (LSB)
+  data_entry_msb = 0x06,   ///< Data Entry (MSB)
+  data_entry_lsb = 0x26,   ///< Data Entry (LSB)
+  rpn_lsb = 0x64,          ///< Registered Parameter Number (LSB)
+  rpn_msb = 0x65,          ///< Registered Parameter Number (MSB)
+  nrpn_lsb = 0x62,         ///< Non-Registered Parameter Number (LSB)
+  nrpn_msb = 0x63,         ///< Non-Registered Parameter Number (MSB)
 
   /// When a device receives the Reset All Controllers message, it should reset the
   /// condition of all its controllers to what it considers an ideal initial state.
