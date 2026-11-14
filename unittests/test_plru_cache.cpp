@@ -10,7 +10,10 @@
 #include "midi2/adt/plru_cache.hpp"
 
 // Standard Library
+#include <array>
+#include <cstdint>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 // Google Test/Mock
@@ -306,6 +309,96 @@ TEST(PlruCache, OverFill) {
   EXPECT_THAT(cache, UnorderedElementsAre(std::make_pair(1U, 1U), std::make_pair(10U, 10U), std::make_pair(11U, 11U),
                                           std::make_pair(12U, 12U), std::make_pair(13U, 13U), std::make_pair(14U, 14U),
                                           std::make_pair(15U, 15U), std::make_pair(16U, 16U)));
+}
+
+/// Checks that match_finder<> finds a key in each of the ways of a full set and reports a key that is not present as
+/// a miss. On Arm, the configurations below select each of the NEON implementations.
+template <typename Key, unsigned SetBits, unsigned Ways> void match_finder_finds_every_way() {
+  using tagged_key = midi2::adt::details::tagged_key<Key, SetBits>;
+  using match_finder = midi2::adt::details::match_finder<Key, SetBits, Ways>;
+  std::array<tagged_key, Ways> keys;
+  for (auto way = 0U; way < Ways; ++way) {
+    keys[way] = tagged_key{static_cast<Key>((way + 1U) << SetBits)};
+  }
+  for (auto way = 0U; way < Ways; ++way) {
+    EXPECT_EQ(match_finder::find(keys[way], keys), way) << "way " << way;
+  }
+  EXPECT_EQ(match_finder::find(tagged_key{static_cast<Key>((Ways + 1U) << SetBits)}, keys), Ways) << "absent key";
+}
+// NOLINTNEXTLINE
+TEST(PlruCacheMatchFinder, Uint16Tag4Ways) {
+  using tagged_key = midi2::adt::details::tagged_key<std::uint16_t, 2>;
+  static_assert(std::is_same_v<tagged_key::value_type, std::uint16_t>);
+  match_finder_finds_every_way<std::uint16_t, 2, 4>();
+}
+// NOLINTNEXTLINE
+TEST(PlruCacheMatchFinder, Uint16Tag8Ways) {
+  using tagged_key = midi2::adt::details::tagged_key<std::uint16_t, 1>;
+  static_assert(std::is_same_v<tagged_key::value_type, std::uint16_t>);
+  match_finder_finds_every_way<std::uint16_t, 1, 8>();
+}
+// NOLINTNEXTLINE
+TEST(PlruCacheMatchFinder, Uint32Tag4Ways) {
+  using tagged_key = midi2::adt::details::tagged_key<std::uint32_t, 2>;
+  static_assert(std::is_same_v<tagged_key::value_type, std::uint32_t>);
+  match_finder_finds_every_way<std::uint32_t, 2, 4>();
+}
+// NOLINTNEXTLINE
+TEST(PlruCacheMatchFinder, Uint32Tag8Ways) {
+  match_finder_finds_every_way<std::uint32_t, 2, 8>();
+}
+
+/// Fills every way of set 0 of a cache, then checks that each key is found with its own value without a further
+/// call to the miss function and that iterating the cache yields each of the keys.
+template <std::unsigned_integral Key, std::size_t Sets, std::size_t Ways> void fill_one_set() {
+  plru_cache<Key, unsigned, Sets, Ways> cache;
+  std::vector<std::pair<Key, unsigned>> expected;
+  for (auto way = 0U; way < Ways; ++way) {
+    // Multiples of Sets are all members of set 0.
+    expected.emplace_back(static_cast<Key>((way + 1U) * Sets), way);
+  }
+
+  auto misses = 0U;
+  for (auto const& [key, value] : expected) {
+    EXPECT_EQ(cache.access(key,
+                           [&misses, value](Key, std::size_t) {
+                             ++misses;
+                             return value;
+                           }),
+              value);
+  }
+  EXPECT_EQ(misses, Ways);
+  EXPECT_EQ(cache.size(), Ways);
+
+  for (auto const& [key, value] : expected) {
+    EXPECT_TRUE(cache.contains(key)) << "key " << +key;
+    EXPECT_EQ(cache.access(key,
+                           [&misses](Key, std::size_t) {
+                             ++misses;
+                             return 0xFFFFU;
+                           }),
+              value)
+        << "key " << +key;
+  }
+  EXPECT_EQ(misses, Ways) << "a key in the cache should not cause a miss";
+  EXPECT_EQ(cache.size(), Ways);
+  EXPECT_THAT(cache, testing::UnorderedElementsAreArray(expected));
+}
+// NOLINTNEXTLINE
+TEST(PlruCache, FillOneSet2x4Uint16) {
+  fill_one_set<std::uint16_t, 2, 4>();
+}
+// NOLINTNEXTLINE
+TEST(PlruCache, FillOneSet4x4Uint16) {
+  fill_one_set<std::uint16_t, 4, 4>();
+}
+// NOLINTNEXTLINE
+TEST(PlruCache, FillOneSet2x8Uint16) {
+  fill_one_set<std::uint16_t, 2, 8>();
+}
+// NOLINTNEXTLINE
+TEST(PlruCache, FillOneSet4x4Uint32) {
+  fill_one_set<std::uint32_t, 4, 4>();
 }
 
 }  // end anonymous namespace
