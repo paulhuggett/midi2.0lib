@@ -69,7 +69,80 @@ protected:
     midi2::ci::create_message(std::back_inserter(message), midi2::ci::trivial_sentinel{}, hdr, content);
     return message;
   }
+
+  /// Writes a message to a buffer of \p size bytes, each initially 0xFF.
+  /// \returns The buffer and the number of bytes between the start of the buffer and the iterator returned by
+  ///   create_message().
+  template <typename Content>
+  static std::pair<std::vector<std::byte>, std::ptrdiff_t> make_bounded_message(struct midi2::ci::header const& hdr,
+                                                                                Content const& content,
+                                                                                std::size_t const size) {
+    std::vector<std::byte> buffer(size, 0xFF_b);
+    auto const result = midi2::ci::create_message(buffer.begin(), buffer.end(), hdr, content);
+    return {buffer, result - buffer.begin()};
+  }
+
+  /// Checks that a message is correctly written to a buffer which is exactly the size of the message and to a buffer
+  /// which is one byte larger.
+  template <typename Content>
+  static void check_bounded_message(struct midi2::ci::header const& hdr, Content const& content) {
+    auto const expected = make_message(hdr, content);
+    ASSERT_FALSE(expected.empty());
+    {
+      SCOPED_TRACE("exact size buffer");
+      auto const [buffer, written] = make_bounded_message(hdr, content, expected.size());
+      EXPECT_THAT(buffer, testing::ElementsAreArray(expected));
+      EXPECT_EQ(written, std::ssize(expected));
+    }
+    {
+      SCOPED_TRACE("buffer one byte larger than the message");
+      auto const [buffer, written] = make_bounded_message(hdr, content, expected.size() + 1U);
+      EXPECT_THAT(std::span{buffer}.first(expected.size()), testing::ElementsAreArray(expected));
+      EXPECT_EQ(buffer.back(), 0xFF_b) << "the byte following the message should not be written";
+      EXPECT_EQ(written, std::ssize(expected));
+    }
+  }
+  static constexpr midi2::ci::header bounded_hdr_{.device_id = 0x7F_b7,
+                                                  .version = 2_b7,
+                                                  .remote_muid = from_le7(sender_muid_),
+                                                  .local_muid = from_le7(destination_muid_)};
 };
+
+// The header alone.
+// NOLINTNEXTLINE
+TEST_F(CICreateMessage, BoundedHeaderOnly) {
+  check_bounded_message(bounded_hdr_, midi2::ci::process_inquiry::midi_message_report_end{});
+}
+// The header followed by a fixed-size body.
+// NOLINTNEXTLINE
+TEST_F(CICreateMessage, BoundedFixedSizeBody) {
+  check_bounded_message(bounded_hdr_, midi2::ci::endpoint{.status = 0x2A_b7});
+}
+// The header followed by a fixed-size part and a variable-length tail.
+// NOLINTNEXTLINE
+TEST_F(CICreateMessage, BoundedBodyWithTail) {
+  std::array const information{2_b7, 3_b7, 5_b7, 7_b7};
+  check_bounded_message(bounded_hdr_, midi2::ci::endpoint_reply{.status = 0x2A_b7, .information = information});
+}
+// The header followed by two parts, each with a variable-length tail.
+// NOLINTNEXTLINE
+TEST_F(CICreateMessage, BoundedTwoPartsWithTails) {
+  using midi2::ci::property_exchange::chunk_info;
+  check_bounded_message(bounded_hdr_, midi2::ci::property_exchange::get{
+                                          .chunk = chunk_info{.number_of_chunks = 1_b14, .chunk_number = 1_b14},
+                                          .request = 1_b7,
+                                          .header = std::string_view{R"({"resource":"DeviceInfo"})"},
+                                          .data = {},
+                                      });
+}
+// A buffer which is too small: the result is the end of the buffer.
+// NOLINTNEXTLINE
+TEST_F(CICreateMessage, BoundedBufferTooSmall) {
+  midi2::ci::endpoint const content{.status = 0x2A_b7};
+  auto const expected = make_message(bounded_hdr_, content);
+  auto const [buffer, written] = make_bounded_message(bounded_hdr_, content, expected.size() - 1U);
+  EXPECT_EQ(written, std::ssize(buffer));
+}
 
 TEST_F(CICreateMessage, DiscoveryV1) {
   constexpr auto device_id = 0x7F_b;
