@@ -156,6 +156,70 @@ TEST(UMPTypesSysex7, IteratorSubtract) {
   auto last = std::end(message);
   EXPECT_EQ(last - first, 4U);
 }
+TEST(UMPTypesSysex7, IteratorSubscript) {
+  auto message = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x1, 0x3, 0x5, 0x7});
+  auto const first = message.begin();
+  EXPECT_EQ(first[0], 0x1);
+  EXPECT_EQ(first[3], 0x7);
+  auto const last = message.end();
+  EXPECT_EQ(last[-1], 0x7);
+  EXPECT_EQ(last[-4], 0x1);
+  first[1] = 0x9;
+  EXPECT_EQ(message[1], 0x9);
+}
+TEST(UMPTypesSysex7, ConstIteratorSubscript) {
+  constexpr auto message = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x1, 0x3, 0x5, 0x7});
+  auto const first = message.begin();
+  EXPECT_EQ(first[0], 0x1);
+  EXPECT_EQ(first[2], 0x5);
+}
+TEST(UMPTypesSysex7, IteratorPostfix) {
+  auto message = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x1, 0x3, 0x5, 0x7});
+  auto it = message.begin();
+  auto const prev = it++;
+  EXPECT_EQ(prev, message.begin());
+  EXPECT_EQ(*prev, 0x1);
+  EXPECT_EQ(*it, 0x3);
+  auto const prev2 = it--;
+  EXPECT_EQ(*prev2, 0x3);
+  EXPECT_EQ(it, message.begin());
+}
+TEST(UMPTypesSysex7, ProxyPostfix) {
+  using proxy = midi2::ump::details::array_subscript_proxy<midi2::ump::data64::sysex7_in_1>;
+  auto message = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x1, 0x3, 0x5, 0x7});
+  auto p = proxy{message, 1};
+  auto const prev = p++;
+  EXPECT_EQ(prev.index(), 1U);
+  EXPECT_EQ(p.index(), 2U);
+  auto const prev2 = p--;
+  EXPECT_EQ(prev2.index(), 2U);
+  EXPECT_EQ(p.index(), 1U);
+}
+TEST(UMPTypesSysex7, IteratorConstAndNonConstCompare) {
+  auto message = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x1, 0x3, 0x5, 0x7});
+  auto const& cmessage = message;
+  midi2::ump::data64::sysex7_in_1::const_iterator cit = cmessage.begin();
+  EXPECT_TRUE(cit == message.begin());
+  EXPECT_TRUE(cit < message.end());
+  cit = message.begin() + 2;  // Assign a non-const iterator to a const iterator.
+  EXPECT_EQ(*cit, 0x5);
+}
+TEST(UMPTypesSysex7, CopyBetweenMessages) {
+  using testing::ElementsAre;
+  auto const src = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x1, 0x3, 0x5, 0x7});
+  auto dest = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x0, 0x0, 0x0, 0x0});
+  std::ranges::copy(src, dest.begin());
+  EXPECT_THAT(dest, ElementsAre(0x1, 0x3, 0x5, 0x7));
+}
+TEST(UMPTypesSysex7, AssignProxyToProxy) {
+  auto message = midi2::ump::data64::sysex7_in_1{}.group(0).data({0x1, 0x3, 0x5, 0x7});
+  // Assigning one element to another must copy the value, not change which element the left-hand side refers to.
+  *message.begin() = *(message.begin() + 3);
+  EXPECT_EQ(message[0], 0x7);
+  EXPECT_EQ(message[3], 0x7);
+  message[1] = message[2];
+  EXPECT_EQ(message[1], 0x5);
+}
 TEST(UMPTypesSysex7, ReadArray) {
   constexpr auto message =
       midi2::ump::data64::sysex7_in_1{}.group(0).number_of_bytes(4).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
