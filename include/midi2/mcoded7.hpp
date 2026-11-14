@@ -52,14 +52,20 @@
 /// \brief  MIDI Mcoded7 Encoding and Decoding
 namespace midi2::mcoded7 {
 
+/// \brief Encodes a sequence of 8-bit bytes using Mcoded7.
 class encoder {
 public:
   /// The maximum number of output bytes that can be generated from a single
   /// call to parse_byte().
   static constexpr auto max_size = std::size_t{8};
 
+  /// \brief Constructs an encoder.
   encoder() { this->reset(); }
 
+  /// \brief Encodes a byte.
+  ///
+  /// Output is produced once a group of seven input bytes is complete.
+  ///
   /// \tparam OutputIterator  An output iterator type to which bytes can be written.
   /// \param value  The value to be encoded.
   /// \param out  An output iterator to which the output sequence is written.
@@ -75,7 +81,11 @@ public:
   /// \returns  Iterator one past the last element assigned.
   template <std::output_iterator<std::byte> OutputIterator> OutputIterator flush(OutputIterator out);
 
+  /// \brief Indicates whether the input is valid.
+  ///
   /// All input is good for encoding, so this function always returns true.
+  ///
+  /// \returns True.
   // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
   [[nodiscard]] constexpr bool good() const { return true; }
 
@@ -93,14 +103,21 @@ private:
   std::array<std::byte, max_size> buffer_{};
 };
 
+/// \brief Decodes an Mcoded7 sequence to 8-bit bytes.
 class decoder {
 public:
   /// The maximum number of output bytes that can be generated from a single
   /// call to parse_byte().
   static constexpr auto max_size = std::size_t{1};
 
+  /// \brief Constructs a decoder.
   decoder() noexcept { this->reset(); }
 
+  /// \brief Decodes a byte of Mcoded7 input.
+  ///
+  /// The first byte of each group of eight holds the most significant bits of the following bytes and produces no
+  /// output. A byte with its most significant bit set is invalid and causes good() to return false.
+  ///
   /// \tparam OutputIterator  An output iterator type to which bytes can be written.
   /// \param value  The value to be decoded.
   /// \param out  An output iterator to which the output sequence is written.
@@ -116,9 +133,13 @@ public:
   /// \returns  Iterator one past the last element assigned.
   template <typename OutputIterator> OutputIterator flush(OutputIterator out) { return out; }
 
-  /// Returns true if the input was valid Mcoded7, false otherwise.
+  /// \brief Indicates whether the input was valid Mcoded7.
+  /// \returns True if the input was valid Mcoded7, false otherwise.
   [[nodiscard]] constexpr bool good() const noexcept { return !static_cast<bool>(bad_); }
 
+  /// \brief Resets the internal state.
+  ///
+  /// This function places the class into a clean state to enable decoding of a fresh data stream.
   void reset() noexcept {
     pos_ = msbs_byte_pos_;
     bad_ = 0U;
@@ -129,8 +150,8 @@ private:
   static constexpr auto msbs_byte_pos_ = 7U;
 
   std::uint8_t msbs_ = 0U;  ///< The most significant bits of the current group of bytes.
-  ///< Position within the current group of bytes (starting at 7 and counting
-  ///< down).
+  /// Position within the current group of bytes (starting at 7 and counting
+  /// down).
   std::uint8_t pos_ : 3 = 0;
   std::uint8_t bad_ : 1 = 0;  ///< 1 if bad input was detected, 0 otherwise.
 };

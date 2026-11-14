@@ -8,6 +8,14 @@
 //
 //===------------------------------------------------------------------------------------===//
 
+/// \file ci7text.hpp
+/// \brief Transcoders between Unicode and the 7-bit text used by MIDI-CI Property Exchange.
+///
+/// MIDI-CI messages may only carry 7-bit data, so characters outside the ASCII range are written as JSON-style
+/// \\uXXXX escape sequences (using UTF-16 surrogate pairs where necessary) and a backslash character is written as
+/// \\\\. These are provided as specializations of icubaby::transcoder<> so that they may be used in the same way as
+/// icubaby's own transcoders.
+
 #ifndef MIDI2_CI_CI7TEXT_HPP
 #define MIDI2_CI_CI7TEXT_HPP
 
@@ -27,6 +35,12 @@
 
 namespace icubaby {
 
+/// \brief Converts Unicode text to 7-bit MIDI-CI text.
+///
+/// ASCII characters are copied to the output (with backslash escaped as \\\\); all other code points are written
+/// as \\uXXXX escape sequences.
+///
+/// \tparam InputEncoding  The type of the input code units (char8_t, char16_t, or char32_t).
 template <unicode_char_type InputEncoding> class transcoder<InputEncoding, char> {
 public:
   /// The type of the code units consumed by this transcoder.
@@ -55,7 +69,7 @@ public:
     return dest;
   }
 
-  /// Call once the entire input sequence has been fed to \ref transcoder-call-operator "operator()". This function
+  /// Call once the entire input sequence has been fed to operator(). This function
   /// ensures that the sequence did not end with a partial code point.
   ///
   /// \tparam OutputIterator  An output iterator type to which values of type transcoder::output_type can be written.
@@ -69,15 +83,15 @@ public:
     return dest;
   }
 
-  /// Indicates whether the input was well-formed
+  /// \brief Indicates whether the input was well-formed
   /// \returns True if the input was well-formed.
   [[nodiscard]] constexpr bool well_formed() const noexcept { return src_to_32_.well_formed(); }
 
-  /// \brief Indicates whether a "partial" code point has been passed to \ref transcoder-call-operator "operator()".
+  /// \brief Indicates whether a "partial" code point has been passed to operator().
   ///
   /// If true, one or more code units are required to build the complete code point.
   ///
-  /// \returns True if a partial code-point has been passed to \ref transcoder-call-operator "operator()" and
+  /// \returns True if a partial code-point has been passed to operator() and
   ///   false otherwise.
   [[nodiscard]] constexpr bool partial() const noexcept { return src_to_32_.partial(); }
 
@@ -112,6 +126,13 @@ private:
   }
 };
 
+/// \brief Converts 7-bit MIDI-CI text to Unicode.
+///
+/// The JSON escape sequences \\\", \\\\, \\/, \\b, \\f, \\n, \\r, \\t, and \\uXXXX are decoded. Input bytes with the
+/// most significant bit set, unknown escape sequences, and malformed \\uXXXX sequences cause well_formed() to return
+/// false.
+///
+/// \tparam OutputEncoding  The type of the output code units (char8_t, char16_t, or char32_t).
 template <unicode_char_type OutputEncoding> class transcoder<char, OutputEncoding> {
 public:
   /// The type of the code units consumed by this transcoder.
@@ -166,7 +187,7 @@ public:
     return dest;
   }
 
-  /// Call once the entire input sequence has been fed to \ref transcoder-call-operator "operator()". This function
+  /// Call once the entire input sequence has been fed to operator(). This function
   /// ensures that the sequence did not end with a partial code point.
   ///
   /// \tparam OutputIterator  An output iterator type to which values of type transcoder::output_type can be written.
@@ -180,16 +201,16 @@ public:
     return dest;
   }
 
-  /// Indicates whether the input was well-formed
+  /// \brief Indicates whether the input was well-formed
   /// \returns True if the input was well-formed.
   [[nodiscard]] constexpr bool well_formed() const noexcept { return well_formed_; }  // src_to_32_.well_formed(); }
 
-  /// \brief Indicates whether a "partial" code point has been passed to \ref transcoder-call-operator "operator()".
+  /// \brief Indicates whether a "partial" code point has been passed to operator().
   ///
-  /// If true, one or more code units are required to build the complete code point.
+  /// This transcoder does not track partial code points (such as an incomplete escape sequence): call end_cp() and
+  /// well_formed() instead.
   ///
-  /// \returns True if a partial code-point has been passed to \ref transcoder-call-operator "operator()" and
-  ///   false otherwise.
+  /// \returns False.
   [[nodiscard]] constexpr bool partial() const noexcept { return false; }  // src_to_32_.partial(); }
 
 private:

@@ -55,7 +55,11 @@ public:
   using const_pointer = value_type const*;
 
   constexpr fifo() noexcept = default;
+  /// \brief Copy constructor.
+  /// \param other  The FIFO to be copied.
   constexpr fifo(fifo const& other) noexcept(std::is_nothrow_copy_constructible_v<ElementType>);
+  /// \brief Move constructor.
+  /// \param other  The FIFO whose elements are to be moved.
   constexpr fifo(fifo&& other) noexcept(std::is_nothrow_move_constructible_v<ElementType>);
 
   constexpr ~fifo() noexcept { this->clear(); }

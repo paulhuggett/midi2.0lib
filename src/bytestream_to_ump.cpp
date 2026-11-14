@@ -56,9 +56,13 @@ void to_ump::convert(std::byte b0, std::byte b1, std::byte b2) noexcept {
                     (std::to_integer<std::uint32_t>(b1) << 8) | std::to_integer<std::uint32_t>(b2));
 }
 
+/// The type of a UMP System Exclusive (7-bit) message carrying a complete message in one UMP.
 using sysex7_in_1 = midi2::ump::data64::details::sysex7<midi2::ump::mt::data64::sysex7_in_1>;
+/// The type of a UMP System Exclusive (7-bit) Start message.
 using sysex7_start = midi2::ump::data64::details::sysex7<midi2::ump::mt::data64::sysex7_start>;
+/// The type of a UMP System Exclusive (7-bit) Continue message.
 using sysex7_continue = midi2::ump::data64::details::sysex7<midi2::ump::mt::data64::sysex7_continue>;
+/// The type of a UMP System Exclusive (7-bit) End message.
 using sysex7_end = midi2::ump::data64::details::sysex7<midi2::ump::mt::data64::sysex7_end>;
 
 template <ump::mt::data64 T> void to_ump::push_sysex7() noexcept {
