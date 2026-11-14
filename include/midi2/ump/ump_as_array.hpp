@@ -103,7 +103,7 @@ public:
   /// \brief Sets the value of the referenced element to the value of the element referenced by \p other.
   /// \param other  A proxy for the element whose value is to be copied.
   /// \returns *this
-  constexpr array_subscript_proxy const& operator=(array_subscript_proxy const& other) const noexcept
+  constexpr array_subscript_proxy& operator=(array_subscript_proxy const& other) noexcept
     requires(!std::is_const_v<T>)
   {
     owner_->data(index_, static_cast<value_type>(other));
