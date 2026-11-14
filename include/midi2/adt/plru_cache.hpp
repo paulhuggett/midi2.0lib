@@ -105,6 +105,9 @@ private:
 /// The low SetBits bits of the key are its set number. Bit 0 of the stored value records that the entry is occupied:
 /// it overlaps the most significant bit of the set number, which need not be stored. There must therefore be at least
 /// one set bit.
+///
+/// \tparam Key  The key type.
+/// \tparam SetBits  The number of low bits of a key which select its set. Must be greater than 0.
 template <std::unsigned_integral Key, unsigned SetBits>
   requires(SetBits > 0)
 class tagged_key {
@@ -116,10 +119,15 @@ public:
   constexpr tagged_key() noexcept = default;
   /// \brief Constructs a valid tag from a key.
   /// \param key  The key.
-  constexpr explicit tagged_key(Key key) noexcept : v_{static_cast<value_type>(1 | (key >> (SetBits - 1)))} {}
+  constexpr explicit tagged_key(Key key) noexcept : v_{static_cast<value_type>(1U | (key >> (SetBits - 1U)))} {}
   /// \brief Compares two tags for equality.
   /// \returns True if the two tags are equal.
   friend constexpr bool operator==(tagged_key const&, tagged_key const&) noexcept = default;
+  /// \brief Returns the key from which this value was created, with the set number bits 0.
+  /// \returns The key from which this value was created, with the set number bits 0.
+  [[nodiscard]] constexpr Key key() const noexcept {
+    return static_cast<Key>(static_cast<Key>(v_ & ~value_type{1}) << (SetBits - 1U));
+  }
   /// \brief Returns true if the tag represents an occupied entry.
   /// \returns True if the tag represents an occupied entry.
   [[nodiscard]] constexpr bool valid() const noexcept { return static_cast<bool>(v_ & 1); }
@@ -364,11 +372,10 @@ private:
 ///
 /// \tparam Key  The key type.
 /// \tparam Mapped  The value type.
-/// \tparam Sets  The number of entries that share the same lookup key fragment or hash bucket
-///   index. All entries in a set compete to be stored in that group. Must be a power of 2 greater than 1.
-/// \tparam Ways  The number of slots within a set that can hold a single entry. The number of
-///   ways in a set determines how many entries with the same key fragment or bucket index can
-///   coexist. Must be a power of 2.
+/// \tparam Sets  The number of sets. A key's set is given by its low bits (key & (Sets - 1)); all of the keys which
+///   map to the same set compete for that set's entries. Must be a power of 2 greater than 1.
+/// \tparam Ways  The number of entries within each set. The number of ways in a set determines how many entries
+///   with the same set index can coexist. Must be a power of 2.
 template <std::unsigned_integral Key, typename Mapped, std::size_t Sets, std::size_t Ways>
   requires(std::popcount(Sets) == 1 && std::popcount(Ways) == 1 && Sets > 1)
 class plru_cache {
