@@ -358,15 +358,12 @@ template <> struct type_to_packed<process_inquiry::midi_message_report_end> {
 /// \param t  The object whose bytes are to be copied.
 /// \returns An output iterator past the last element copied if there was sufficient space. If there was not
 ///   sufficient space, nothing is copied and \p first is advanced as far as \p last.
-/// \note The copy is only performed if there is room for more than sizeof(T) bytes: if the range holds exactly
-///   sizeof(T) bytes, nothing is copied.
 template <typename T, std::output_iterator<std::byte> O, std::sentinel_for<O> S>
   requires(std::is_trivially_copyable_v<T> && alignof(T) == 1)
 constexpr O safe_copy(O first, S last, T const& t) {
   auto first2 = first;
-  // Is there sufficient room?
-  std::ranges::advance(first2, sizeof(T), last);
-  if (first2 != last) {
+  // Is there sufficient room? advance() returns the number of steps that it could not take before reaching last.
+  if (std::ranges::advance(first2, static_cast<std::iter_difference_t<O>>(sizeof(T)), last) == 0) {
     // Yes: do the copy.
     first2 = std::ranges::copy(std::bit_cast<std::byte const*>(&t), std::bit_cast<std::byte const*>(&t + 1), first).out;
   }
@@ -391,8 +388,8 @@ template <typename ElementType, std::output_iterator<std::byte> O, std::sentinel
 constexpr O write_packed_with_tail(O first, S const last, std::byte const* ptr, std::size_t const size,
                                    std::span<ElementType const> const span) {
   auto first2 = first;
-  std::ranges::advance(first2, static_cast<std::iter_difference_t<decltype(first)>>(size + span.size_bytes()), last);
-  if (first2 != last) {
+  // Is there sufficient room? advance() returns the number of steps that it could not take before reaching last.
+  if (std::ranges::advance(first2, static_cast<std::iter_difference_t<O>>(size + span.size_bytes()), last) == 0) {
     first = std::ranges::copy(ptr, ptr + size, first).out;
     first2 = std::ranges::copy(
                  std::span<std::byte const>{std::bit_cast<std::byte const*>(span.data()), span.size_bytes()}, first)
