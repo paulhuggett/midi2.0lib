@@ -217,8 +217,8 @@ public:
     requires(std::is_same_v<std::remove_const_t<T>, std::remove_const_t<U>> && !std::is_same_v<T, U> &&
              std::is_const_v<T>)
   constexpr iterator_base& operator=(iterator_base<U> const& other) noexcept {
-    owner_ = other.owner_;
-    index_ = other.index_;
+    owner_ = other.owner();
+    index_ = other.index();
     return *this;
   }
 
@@ -230,7 +230,7 @@ public:
   template <typename U>
     requires(std::is_same_v<std::remove_const_t<T>, std::remove_const_t<U>>)
   friend constexpr bool operator==(iterator_base const& lhs, iterator_base<U> const& rhs) noexcept {
-    return lhs.owner_ == rhs.owner_ && lhs.index_ == rhs.index_;
+    return lhs.owner() == rhs.owner() && lhs.index() == rhs.index();
   }
 
   /// \brief Three-way comparison of two iterators.
@@ -241,10 +241,10 @@ public:
   template <typename U>
     requires(std::is_same_v<std::remove_const_t<T>, std::remove_const_t<U>>)
   friend constexpr std::strong_ordering operator<=>(iterator_base const& lhs, iterator_base<U> const& rhs) noexcept {
-    if (auto const c = std::compare_three_way{}(lhs.owner_, rhs.owner_); std::is_neq(c)) {
+    if (auto const c = std::compare_three_way{}(lhs.owner(), rhs.owner()); std::is_neq(c)) {
       return c;
     }
-    return lhs.index_ <=> rhs.index_;
+    return lhs.index() <=> rhs.index();
   }
 
   /// \brief Returns a proxy for the referenced element.
@@ -345,8 +345,14 @@ public:
     return t -= n;
   }
 
+  /// \brief Returns the message to which the iterator refers.
+  /// \returns A pointer to the message, or nullptr if the iterator does not refer to a message.
+  [[nodiscard]] constexpr T* owner() const noexcept { return owner_; }
+  /// \brief Returns the index of the element to which the iterator refers.
+  /// \returns The index of the referenced element.
+  [[nodiscard]] constexpr std::size_t index() const noexcept { return index_; }
+
 private:
-  template <typename U> friend class iterator_base;
 
   T* owner_ = nullptr;
   std::size_t index_ = 0;
