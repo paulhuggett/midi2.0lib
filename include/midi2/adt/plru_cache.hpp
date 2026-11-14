@@ -102,9 +102,15 @@ private:
 /// We don't store the key directly in this struct: some of the bits are determined by the key's set so don't need to
 /// be recorded here. We do need to record whether a key entry is occupied, so there's a bit used for that.
 ///
+/// The low SetBits bits of the key are its set number. Bit 0 of the stored value records that the entry is occupied:
+/// it overlaps the most significant bit of the set number, which need not be stored. There must therefore be at least
+/// one set bit.
+///
 /// \tparam Key  The key type.
-/// \tparam SetBits  The number of low bits of a key which select its set.
-template <std::unsigned_integral Key, unsigned SetBits> class tagged_key {
+/// \tparam SetBits  The number of low bits of a key which select its set. Must be greater than 0.
+template <std::unsigned_integral Key, unsigned SetBits>
+  requires(SetBits > 0)
+class tagged_key {
 public:
   /// \brief The type used to store the tag.
   using value_type = uinteger<sizeof(Key) * CHAR_BIT - SetBits + 1>::type;
@@ -113,10 +119,15 @@ public:
   constexpr tagged_key() noexcept = default;
   /// \brief Constructs a valid tag from a key.
   /// \param key  The key.
-  constexpr explicit tagged_key(Key key) noexcept : v_{static_cast<value_type>(1 | (key >> (SetBits - 1)))} {}
+  constexpr explicit tagged_key(Key key) noexcept : v_{static_cast<value_type>(1U | (key >> (SetBits - 1U)))} {}
   /// \brief Compares two tags for equality.
   /// \returns True if the two tags are equal.
   friend constexpr bool operator==(tagged_key const&, tagged_key const&) noexcept = default;
+  /// \brief Returns the key from which this value was created, with the set number bits 0.
+  /// \returns The key from which this value was created, with the set number bits 0.
+  [[nodiscard]] constexpr Key key() const noexcept {
+    return static_cast<Key>(static_cast<Key>(v_ & ~value_type{1}) << (SetBits - 1U));
+  }
   /// \brief Returns true if the tag represents an occupied entry.
   /// \returns True if the tag represents an occupied entry.
   [[nodiscard]] constexpr bool valid() const noexcept { return static_cast<bool>(v_ & 1); }
@@ -178,9 +189,14 @@ struct match_finder<Key, SetBits, 4> {
     uint16x4_t const b = vld1_u16(std::bit_cast<std::uint16_t const*>(values.data()));
 
     uint16x4_t const cmp = vceq_u16(a, b);  // Compare lanes: 0xFFFF if equal
+    // Treat 4 16-bit lanes as a single 64-bit scalar
     std::uint64_t const packed = vget_lane_u64(vreinterpret_u64_u16(cmp), 0);
+
+    // Extract the matching lane by counting trailing groups of 16 bits. If packed is zero, no lane matched.
+    // For nonzero packed: ctz = 16*i (i = matching lane) -> (ctz+1)/16 = i.
+    // For zero packed:    ctz = 63 -> (ctz+1)/16 = 4 (no match).
     std::uint64_t const nz_or = packed | (static_cast<std::uint64_t>(packed == 0) << 63);
-    return (static_cast<std::size_t>(static_cast<unsigned>(std::countr_zero(nz_or)) + 1U)) >> 3;
+    return (static_cast<std::size_t>(static_cast<unsigned>(std::countr_zero(nz_or)) + 1U)) / 16U;
   }
 };
 
@@ -223,8 +239,8 @@ struct match_finder<Key, SetBits, 4> {
         vget_lane_u64(vreinterpret_u64_u16(narrow), 0);  // Treat 4 16-bit lanes as a single 64-bit scalar
 
     // Extract the matching lane by counting trailing groups of 16 bits. If packed is zero, no lane matched.
-    // For nonzero packed: ctz = 16*i (i = matching lane).
-    // For zero packed:    ctz = 63  -> (ctz+1)/16 = 4  (no match).
+    // For nonzero packed: ctz = 16*i (i = matching lane) -> (ctz+1)/16 = i.
+    // For zero packed:    ctz = 63 -> (ctz+1)/16 = 4 (no match).
     std::uint64_t const nz_or = packed | (static_cast<std::uint64_t>(packed == 0) << 63);
     return (static_cast<unsigned>(std::countr_zero(nz_or)) + 1U) / 16U;
   }
@@ -314,7 +330,7 @@ public:
   /// \returns The key with its set bits cleared. The caller must OR in the set number to obtain the full key.
   [[nodiscard]] constexpr Key key(std::size_t const index) const noexcept {
     assert(index < keys_.size());
-    return (keys_[index].get() & ~0x01U) << (SetBits - 1);  // this not the entire key!
+    return keys_[index].key();  // this not the entire key: the set number bits are 0.
   }
   /// \brief Returns the value of a member of the set.
   /// \param index  The index of the member [0, Ways). The member must be occupied.
@@ -357,11 +373,11 @@ private:
 /// \tparam Key  The key type.
 /// \tparam Mapped  The value type.
 /// \tparam Sets  The number of sets. A key's set is given by its low bits (key & (Sets - 1)); all of the keys which
-///   map to the same set compete for that set's entries. Must be a power of 2.
+///   map to the same set compete for that set's entries. Must be a power of 2 greater than 1.
 /// \tparam Ways  The number of entries within each set. The number of ways in a set determines how many entries
 ///   with the same set index can coexist. Must be a power of 2.
 template <std::unsigned_integral Key, typename Mapped, std::size_t Sets, std::size_t Ways>
-  requires(std::popcount(Sets) == 1 && std::popcount(Ways) == 1)
+  requires(std::popcount(Sets) == 1 && std::popcount(Ways) == 1 && Sets > 1)
 class plru_cache {
 public:
   using key_type = Key;                             ///< The key type.
