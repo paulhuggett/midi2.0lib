@@ -94,6 +94,9 @@ public:
   /// \brief Sets the value of the referenced element.
   /// \param v  The new value of the element.
   /// \returns *this
+  // This operator is deliberately const (like std::vector<bool>::reference in C++23): iterator_base returns proxies by
+  // value and std::indirectly_writable requires that a const proxy rvalue be assignable.
+  // NOLINTNEXTLINE(cppcoreguidelines-c-copy-assignment-signature,misc-unconventional-assign-operator)
   constexpr array_subscript_proxy const& operator=(value_type const v) const noexcept
     requires(!std::is_const_v<T>)
   {
