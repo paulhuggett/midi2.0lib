@@ -257,7 +257,7 @@ enum class pe_status {
   /// Success/OK.
   ok = 200,
   /// Accepted: an Inquiry: Set Property Data message was accepted but the device cannot guarantee the result.
-  accepted = 202,
+  accepted = 201,
   /// Resource currently unavailable or an error occurred.
   resource_unavailable = 341,
   /// Bad data or unexpected end of data set.
@@ -272,6 +272,10 @@ enum class pe_status {
   resource_unsupported = 404,
   /// Resource not allowed: the resource is not applicable at this time.
   resource_not_allowed = 405,
+  /// Flow control not supported.
+  flow_control_not_supported = 406,
+  /// Flow control is required.
+  flow_control_required = 407,
   /// Payload too large.
   payload_too_large = 413,
   /// Unsupported media type or encoding.
