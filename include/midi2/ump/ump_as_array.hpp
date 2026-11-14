@@ -106,6 +106,9 @@ public:
   constexpr array_subscript_proxy& operator=(array_subscript_proxy const& other) noexcept
     requires(!std::is_const_v<T>)
   {
+    if (this == &other) {
+      return *this;
+    }
     owner_->data(index_, static_cast<value_type>(other));
     return *this;
   }
