@@ -4507,16 +4507,18 @@ public:
     // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
     [[nodiscard]] constexpr bool check() const noexcept { return true; }
 
-    /// Defines the bit position of the program number field.
-    using program = adt::bit_range<24, 8>;
-    /// Defines a group of reserved bits.
-    using reserved0 = adt::bit_range<16, 8>;
     /// Defines a reserved bit.
-    using reserved1 = adt::bit_range<15, 1>;
+    using reserved0 = adt::bit_range<31, 1>;
+    /// Defines the bit position of the program number field.
+    using program = adt::bit_range<24, 7>;
+    /// Defines a group of reserved bits.
+    using reserved1 = adt::bit_range<16, 8>;
+    /// Defines a reserved bit.
+    using reserved2 = adt::bit_range<15, 1>;
     /// Defines the bit position of the bank select MSB field. This is used only if the bank_valid flag is set.
     using bank_msb = adt::bit_range<8, 7>;
     /// Defines a reserved bit.
-    using reserved2 = adt::bit_range<7, 1>;
+    using reserved3 = adt::bit_range<7, 1>;
     /// Defines the bit position of the bank select LSB field. This is used only if the bank_valid flag is set.
     using bank_lsb = adt::bit_range<0, 7>;
   };

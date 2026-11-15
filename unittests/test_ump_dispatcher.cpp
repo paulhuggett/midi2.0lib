@@ -469,7 +469,7 @@ TEST_F(UMPDispatcherMIDI2CVM, ProgramChange) {
                                .channel(3)
                                .option_flags(0)
                                .bank_valid(true)
-                               .program(0b10101010)
+                               .program(0b1010101)
                                .bank_msb(0b01010101)
                                .bank_lsb(0b00101010);
   EXPECT_CALL(config_.m2cvm, program_change(config_.context, message)).Times(1);
