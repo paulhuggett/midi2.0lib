@@ -60,6 +60,18 @@ TYPED_TEST(UMPCheckFixture, Check) {
   ASSERT_TRUE(midi2::ump::check(this->value_));
 }
 
+// M2-104-UM Figure 64: word 1 is r (bit 31), program (bits 30-24), reserved (23-16), r (15), bank msb (14-8),
+// r (7), bank lsb (6-0).
+TEST(UMPTypesM2CVMProgramChange, ProgramFieldLayout) {
+  constexpr auto message = midi2::ump::m2cvm::program_change{}.program(0x7F);
+  EXPECT_EQ(std::uint32_t{get<1>(message)}, 0x7F000000U);
+  EXPECT_EQ(message.program(), 0x7F);
+}
+TEST(UMPTypesM2CVMProgramChange, ReservedBitIsNotPartOfProgram) {
+  std::array<std::uint32_t, 2> words{std::uint32_t{get<0>(midi2::ump::m2cvm::program_change{})}, 0x85000000U};
+  auto const message = midi2::ump::m2cvm::program_change{std::span{words}};
+  EXPECT_EQ(message.program(), 0x05);
+}
 TEST(UMPTypesSysex7, AssignIndividually) {
   constexpr auto message =
       midi2::ump::data64::sysex7_in_1{}.group(0).number_of_bytes(4).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
