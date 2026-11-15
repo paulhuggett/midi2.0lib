@@ -9639,17 +9639,22 @@ public:
   [[nodiscard]] constexpr auto cbegin() noexcept { return const_iterator{*this, 0}; }
 
   /// \returns An iterator referring to the position after the last data byte.
-  [[nodiscard]] constexpr auto end() noexcept { return iterator{*this, this->number_of_bytes()}; }
+  [[nodiscard]] constexpr auto end() noexcept { return iterator{*this, this->size()}; }
   /// \returns A const iterator referring to the position after the last data byte.
-  [[nodiscard]] constexpr auto end() const noexcept { return const_iterator{*this, this->number_of_bytes()}; }
+  [[nodiscard]] constexpr auto end() const noexcept { return const_iterator{*this, this->size()}; }
   /// \returns A const iterator referring to the position after the last data byte.
-  [[nodiscard]] constexpr auto cend() noexcept { return const_iterator{*this, this->number_of_bytes()}; }
+  [[nodiscard]] constexpr auto cend() noexcept { return const_iterator{*this, this->size()}; }
 
   /// \returns The maximum number of data bytes that the message can hold.
   // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
   [[nodiscard]] constexpr size_type max_size() const noexcept { return 13U; }
+  /// The number_of_bytes field counts the stream ID as well as the data bytes, so the number of data bytes is one less
+  /// than its value. A value of 0 (invalid) or 0xF (abort) yields 0.
   /// \returns The number of data bytes in the message.
-  [[nodiscard]] constexpr size_type size() const noexcept { return this->number_of_bytes(); }
+  [[nodiscard]] constexpr size_type size() const noexcept {
+    auto const n = static_cast<size_type>(this->number_of_bytes());
+    return n == 0U || n > this->max_size() + 1U ? 0U : n - 1U;
+  }
   /// \returns True if the message contains no data bytes, false otherwise.
   [[nodiscard]] constexpr bool empty() const noexcept { return this->size() == 0; }
 
@@ -9722,7 +9727,7 @@ public:
   }
 
   /// Copies data bytes from an initializer list into the message. The number_of_bytes field is set to the number of
-  ///   values copied.
+  ///   values copied plus one for the stream ID.
   /// \tparam T  An integral type.
   /// \param vs  The data bytes to be copied. At most max_size() values are copied.
   /// \returns *this
@@ -9730,11 +9735,11 @@ public:
     requires std::is_convertible_v<T, char8_t>
   constexpr sysex8& data(std::initializer_list<T> vs) {
     auto const index = ::midi2::ump::details::data_helper<sysex8, 8U>::data(*this, vs);
-    return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index));
+    return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index + 1U));
   }
 
   /// Copies data bytes from a range into the message. The number_of_bytes field is set to the number of values
-  ///   copied.
+  ///   copied plus one for the stream ID.
   /// \tparam Range  An input range whose elements are integral values.
   /// \tparam Proj  The type of the projection applied to each element of the range.
   /// \param range  The data bytes to be copied. At most max_size() values are copied.
@@ -9744,11 +9749,11 @@ public:
     requires std::is_integral_v<std::remove_cvref_t<std::ranges::range_value_t<Range>>>
   constexpr sysex8& data(Range&& range, Proj proj = {}) {
     auto const index = ::midi2::ump::details::data_helper<sysex8, 8U>::data(*this, std::forward<Range>(range), proj);
-    return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index));
+    return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index + 1U));
   }
 
   /// Copies data bytes from the iterator range [\p first, \p last) into the message. The number_of_bytes field is set
-  ///   to the number of values copied.
+  ///   to the number of values copied plus one for the stream ID.
   /// \tparam I  An input iterator type whose value type is integral.
   /// \tparam S  A sentinel type for \p I.
   /// \param first  The beginning of the range of data bytes to be copied.
@@ -9758,7 +9763,7 @@ public:
     requires std::is_integral_v<std::remove_cvref_t<typename std::iterator_traits<I>::value_type>>
   constexpr sysex8& data(I first, S last) {
     auto const index = ::midi2::ump::details::data_helper<sysex8, 8U>::data(*this, first, last);
-    return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index));
+    return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index + 1U));
   }
 
 private:

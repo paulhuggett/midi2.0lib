@@ -245,8 +245,8 @@ TEST(UMPTypesSysex7, ReadArray) {
 
 TEST(UMPTypesSysex8, AssignIndividually) {
   using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
-  constexpr auto message = sysex8_in_1{}.group(0).number_of_bytes(4).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
-  auto message2 = sysex8_in_1{}.group(0).number_of_bytes(4);
+  constexpr auto message = sysex8_in_1{}.group(0).number_of_bytes(5).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
+  auto message2 = sysex8_in_1{}.group(0).number_of_bytes(5);
   message2[0] = 0x7E;
   message2[1] = 0x7F;
   message2[2] = 0x07;
@@ -257,7 +257,7 @@ TEST(UMPTypesSysex8, AllElements) {
   using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
   constexpr auto message = sysex8_in_1{}
                                .group(0)
-                               .number_of_bytes(13)
+                               .number_of_bytes(14)
                                .data0(0x7E)
                                .data1(0x7F)
                                .data2(0x07)
@@ -288,7 +288,8 @@ TEST(UMPTypesSysex8, AllElements) {
 TEST(UMPTypesSysex8, InitializerList) {
   using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
   constexpr auto message = sysex8_in_1{}.group(0).data({0x7E, 0x7F, 0x07, 0x0D});
-  ASSERT_EQ(message.number_of_bytes(), 4U);
+  ASSERT_EQ(message.number_of_bytes(), 5U);
+  ASSERT_EQ(message.size(), 4U);
   EXPECT_EQ(message[0], 0x7E);
   EXPECT_EQ(message[1], 0x7F);
   EXPECT_EQ(message[2], 0x07);
@@ -298,7 +299,8 @@ TEST(UMPTypesSysex8, InitializerListMaxLength) {
   using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
   constexpr auto message =
       sysex8_in_1{}.group(0).data({0x7E, 0x7F, 0x07, 0x0D, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09});
-  ASSERT_EQ(message.number_of_bytes(), 13U);
+  ASSERT_EQ(message.number_of_bytes(), 14U);
+  ASSERT_EQ(message.size(), 13U);
   EXPECT_EQ(message[0], 0x7E);
   EXPECT_EQ(message[1], 0x7F);
   EXPECT_EQ(message[2], 0x07);
@@ -320,12 +322,12 @@ TEST(UMPTypesSysex8, IteratorWriteUsingAlgorithm) {
   constexpr std::array src{0x1, 0x3, 0x5, 0x7};
   std::ranges::copy(src, message.begin());
   using count_type = sysex8_in_1::word0::number_of_bytes::uinteger;
-  message.number_of_bytes(static_cast<count_type>(src.size()));
+  message.number_of_bytes(static_cast<count_type>(src.size() + 1U));  // +1 for the stream ID
   EXPECT_THAT(message, ElementsAreArray(src));
 }
 TEST(UMPTypesSysex8, ReadArray) {
   using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
-  constexpr auto message = sysex8_in_1{}.group(0).number_of_bytes(4).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
+  constexpr auto message = sysex8_in_1{}.group(0).number_of_bytes(5).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
   EXPECT_EQ(message[0], 0x7E);
   EXPECT_EQ(message[1], 0x7F);
   EXPECT_EQ(message[2], 0x07);
@@ -339,6 +341,38 @@ TEST(UMPTypesSysex8, ReadArray) {
   EXPECT_EQ(message[10], 0x00);
   EXPECT_EQ(message[11], 0x00);
   EXPECT_EQ(message[12], 0x00);
+}
+// M2-104-UM section 7.8: "# of bytes" counts the stream ID as well as the data bytes (1-14). 0 is invalid and 0xF
+// aborts the message.
+TEST(UMPTypesSysex8, NumberOfBytesIncludesStreamId) {
+  using testing::ElementsAre;
+  using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
+  constexpr auto message = sysex8_in_1{}.group(0).stream_id(3).number_of_bytes(3).data0(0x11).data1(0x22).data2(0x33);
+  EXPECT_EQ(message.size(), 2U);
+  EXPECT_FALSE(message.empty());
+  EXPECT_THAT(message, ElementsAre(0x11, 0x22));
+}
+TEST(UMPTypesSysex8, StreamIdOnlyIsEmpty) {
+  using sysex8_end = midi2::ump::data128::sysex8_end;
+  constexpr auto message = sysex8_end{}.group(0).number_of_bytes(1);
+  EXPECT_EQ(message.size(), 0U);
+  EXPECT_TRUE(message.empty());
+  EXPECT_EQ(message.begin(), message.end());
+}
+TEST(UMPTypesSysex8, InvalidAndAbortCountsAreEmpty) {
+  using sysex8_end = midi2::ump::data128::sysex8_end;
+  EXPECT_TRUE(sysex8_end{}.group(0).number_of_bytes(0).empty());
+  EXPECT_TRUE(sysex8_end{}.group(0).number_of_bytes(0xF).empty());
+}
+TEST(UMPTypesSysex8, DataFromRangeSetsNumberOfBytes) {
+  using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
+  constexpr std::array src{0x01, 0x02, 0x03};
+  auto const message = sysex8_in_1{}.group(0).data(src);
+  EXPECT_EQ(message.number_of_bytes(), 4U);
+  EXPECT_EQ(message.size(), 3U);
+  auto const message2 = sysex8_in_1{}.group(0).data(src.begin(), src.end());
+  EXPECT_EQ(message2.number_of_bytes(), 4U);
+  EXPECT_EQ(message2.size(), 3U);
 }
 
 TEST(UMPTypesTextCommon, InitializerList) {
