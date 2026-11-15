@@ -4214,9 +4214,9 @@ public:
     using reserved = adt::bit_range<15, 1>;
     /// Defines the bit position of the 7-bit note number field.
     using note = adt::bit_range<8, 7>;
-    /// Defines the bit position of the option flags field. The individual flags are also available as the detach and
-    /// set_to_default fields.
-    using option_flags = adt::bit_range<0, 1>;
+    /// Defines the bit position of the option flags field. These bits are reserved for future option flags and should
+    /// be zero. The detach and set_to_default flags occupy the two bits below this field.
+    using option_flags = adt::bit_range<2, 6>;
     /// Defines the bit position of the detach (D) option flag. When set, per-note controllers are detached from
     /// previously received notes on this note number.
     using detach = adt::bit_range<1, 1>;

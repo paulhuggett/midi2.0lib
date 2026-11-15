@@ -243,6 +243,28 @@ TEST(UMPTypesSysex7, ReadArray) {
   EXPECT_EQ(message[5], 0x00);
 }
 
+// M2-104-UM Figure 51: the low byte of word 0 is option flags (bits 7-2), D (bit 1), S (bit 0).
+TEST(UMPTypesM2CVMPerNoteManagement, FlagsAreIndependent) {
+  using per_note_management = midi2::ump::m2cvm::per_note_management;
+  constexpr per_note_management empty;
+  auto const base = std::uint32_t{get<0>(empty)};
+
+  auto const s = per_note_management{}.set_to_default(1);
+  EXPECT_EQ(std::uint32_t{get<0>(s)}, base | 0x01U);
+  EXPECT_EQ(s.option_flags(), 0U);
+  EXPECT_EQ(s.detach(), 0U);
+
+  auto const d = per_note_management{}.detach(1);
+  EXPECT_EQ(std::uint32_t{get<0>(d)}, base | 0x02U);
+  EXPECT_EQ(d.option_flags(), 0U);
+  EXPECT_EQ(d.set_to_default(), 0U);
+
+  auto const o = per_note_management{}.option_flags(0x3F);
+  EXPECT_EQ(std::uint32_t{get<0>(o)}, base | 0xFCU);
+  EXPECT_EQ(o.detach(), 0U);
+  EXPECT_EQ(o.set_to_default(), 0U);
+}
+
 TEST(UMPTypesSysex8, AssignIndividually) {
   using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
   constexpr auto message = sysex8_in_1{}.group(0).number_of_bytes(5).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
