@@ -158,12 +158,14 @@ private:
         pn_lsb = value;
         pn_lsb_valid = true;
       }
-      /// \brief Forgets the selected parameter number. The Data Entry MSB value is unaffected.
+      /// \brief Forgets the selected parameter number and any Data Entry MSB value received for it.
       constexpr void reset() noexcept {
         pn_msb_valid = false;
         pn_msb = 0;
         pn_lsb_valid = false;
         pn_lsb = 0;
+        value_msb_valid = false;
+        value_msb = 0;
       }
       /// \brief Records the Data Entry MSB value.
       /// \param value  The 7-bit Data Entry MSB value.
