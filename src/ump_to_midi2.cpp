@@ -69,21 +69,26 @@ void ump_to_midi2::to_midi2_config::m1cvm::control_change(ump_to_midi2::context*
   case bank_select: ctxt->bank[group][channel].set_msb(value); break;
   case bank_select_lsb: ctxt->bank[group][channel].set_lsb(value); break;
 
+  // A parameter number controller marks the end of any previous RPN/NRPN, so send its held value first.
+  // (M2-104 section D.3.3)
   case nrpn_msb:
+    flush_pending(ctxt, c, group, channel);
     c.pn_is_rpn = false;
     c.set_number_msb(value);
     break;
   case nrpn_lsb:
+    flush_pending(ctxt, c, group, channel);
     c.pn_is_rpn = false;
-    c.pn_lsb_valid = true;
-    c.pn_lsb = value;
+    c.set_number_lsb(value);
     break;
 
   case rpn_msb:
+    flush_pending(ctxt, c, group, channel);
     c.pn_is_rpn = true;
     c.set_number_msb(value);
     break;
   case rpn_lsb:
+    flush_pending(ctxt, c, group, channel);
     // Setting RPN to 7FH,7FH will disable the data entry, data increment, and data decrement controllers
     // until a new RPN or NRPN is selected. (MIDI 1.0 Approved Protocol JMSC-0011)
     if (c.pn_is_rpn && c.pn_msb_valid != 0U && c.pn_msb == 0x7FU && value == 0x7FU) {
@@ -94,19 +99,27 @@ void ump_to_midi2::to_midi2_config::m1cvm::control_change(ump_to_midi2::context*
     }
     break;
 
-  case data_entry_msb: c.set_value_msb(value); break;
+  case data_entry_msb:
+    // A subsequent Data Entry MSB completes the previous value.
+    flush_pending(ctxt, c, group, channel);
+    c.set_value_msb(value);
+    break;
 
   case data_entry_lsb:
-    if (c.pn_msb_valid != 0U && c.pn_lsb_valid != 0U && c.value_msb_valid != 0U) {
+    if (c.is_complete()) {
       if (c.pn_is_rpn) {
         pn_control_message<ump::m2cvm::rpn_controller>(ctxt, c, group, channel, value);
       } else {
         pn_control_message<ump::m2cvm::nrpn_controller>(ctxt, c, group, channel, value);
       }
     }
+    c.value_pending = false;
     break;
 
-  case reset_all_controllers: c.reset(); [[fallthrough]];
+  case reset_all_controllers:
+    flush_pending(ctxt, c, group, channel);
+    c.reset();
+    [[fallthrough]];
 
   default: {
     constexpr auto m2v = ump::m2cvm::control_change::word1::value::bits();
@@ -119,6 +132,29 @@ void ump_to_midi2::to_midi2_config::m1cvm::control_change(ump_to_midi2::context*
     break;
   }
   }
+}
+
+// flush pending
+// ~~~~~~~~~~~~~
+void ump_to_midi2::to_midi2_config::m1cvm::flush_pending(ump_to_midi2::context* const ctxt,
+                                                         struct ump_to_midi2::context::parameter_number& c,
+                                                         std::uint8_t const group, std::uint8_t const channel) {
+  if (c.value_pending == 0U) {
+    return;
+  }
+  c.value_pending = false;
+  if (c.is_complete()) {
+    if (c.pn_is_rpn) {
+      pn_control_message<ump::m2cvm::rpn_controller>(ctxt, c, group, channel, 0);
+    } else {
+      pn_control_message<ump::m2cvm::nrpn_controller>(ctxt, c, group, channel, 0);
+    }
+  }
+}
+
+void ump_to_midi2::flush(std::uint8_t const group, std::uint8_t const channel) {
+  assert(group < 16 && channel < 16);
+  to_midi2_config::m1cvm::flush_pending(&context_, context_.parameter_number[group][channel], group, channel);
 }
 
 // program change

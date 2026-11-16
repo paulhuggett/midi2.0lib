@@ -15,6 +15,7 @@
 // Standard Library
 #include <array>
 #include <ranges>
+#include <utility>
 #include <vector>
 
 // Google Test/Mock/Fuzz
@@ -309,51 +310,174 @@ TEST(UMPToMidi2, ControlChangeNRPN) {
   EXPECT_THAT(convert(input), ElementsAre(std::uint32_t{get<0>(m2)}, std::uint32_t{get<1>(m2)}));
 }
 
-// After the RPN Null message (7FH,7FH) a Data Entry MSB received for the old parameter must not be combined with a
-// Data Entry LSB sent for a newly selected one.
-TEST(UMPToMidi2, RPNNullForgetsDataEntryMSB) {
-  constexpr auto group = std::uint8_t{0x1};
-  constexpr auto channel = std::uint8_t{0xF};
+class UMPToMidi2PN : public testing::Test {
+protected:
+  static constexpr auto group = std::uint8_t{0x1};
+  static constexpr auto channel = std::uint8_t{0xF};
 
-  std::vector<std::uint32_t> input;
+  static constexpr auto cc() { return midi2::ump::m1cvm::control_change{}.group(group).channel(channel); }
+  void send(midi2::ump::control const controller, std::uint8_t const value) {
+    midi2::ump::apply(cc().controller(std::to_underlying(controller)).value(value), [this](std::uint32_t const v) {
+      input_.push_back(v);
+      return false;
+    });
+  }
+  /// Returns the words of a MIDI 2.0 RPN or NRPN controller message with a value built from a 14-bit MIDI 1.0 value.
+  template <typename T>
+  static std::vector<std::uint32_t> pn(std::uint8_t const bank, std::uint8_t const index, std::uint8_t const msb,
+                                       std::uint8_t const lsb) {
+    auto const m2 = T{}.group(group).channel(channel).bank(bank).index(index).value(
+        midi2::ump::mcm_scale<14, 32>(static_cast<std::uint16_t>((msb << 7) | lsb)));
+    return {std::uint32_t{get<0>(m2)}, std::uint32_t{get<1>(m2)}};
+  }
+  static std::vector<std::uint32_t> rpn(std::uint8_t bank, std::uint8_t index, std::uint8_t msb, std::uint8_t lsb) {
+    return pn<midi2::ump::m2cvm::rpn_controller>(bank, index, msb, lsb);
+  }
+  static std::vector<std::uint32_t> nrpn(std::uint8_t bank, std::uint8_t index, std::uint8_t msb, std::uint8_t lsb) {
+    return pn<midi2::ump::m2cvm::nrpn_controller>(bank, index, msb, lsb);
+  }
+  static std::vector<std::uint32_t> concat(std::vector<std::uint32_t> a, std::vector<std::uint32_t> const& b) {
+    a.insert(a.end(), b.begin(), b.end());
+    return a;
+  }
+
+  std::vector<std::uint32_t> input_;
+};
+
+// M2-104 section D.3.3: a held Data Entry MSB is sent when a subsequent CC 6 is received.
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, SubsequentDataEntryMSBSendsHeldValue) {
   using enum midi2::ump::control;
-  auto const cc = [] constexpr { return midi2::ump::m1cvm::control_change{}.group(group).channel(channel); };
-  auto const append = [&input](std::uint32_t v) {
-    input.push_back(v);
-    return false;
-  };
-  midi2::ump::apply(cc().controller(rpn_msb).value(0x01), append);
-  midi2::ump::apply(cc().controller(rpn_lsb).value(0x02), append);
-  midi2::ump::apply(cc().controller(data_entry_msb).value(0x03), append);
-  midi2::ump::apply(cc().controller(rpn_msb).value(0x7F), append);
-  midi2::ump::apply(cc().controller(rpn_lsb).value(0x7F), append);
-  midi2::ump::apply(cc().controller(rpn_msb).value(0x04), append);
-  midi2::ump::apply(cc().controller(rpn_lsb).value(0x05), append);
-  midi2::ump::apply(cc().controller(data_entry_lsb).value(0x06), append);
-  EXPECT_THAT(convert(input), IsEmpty());
+  send(rpn_msb, 0x01);
+  send(rpn_lsb, 0x02);
+  send(data_entry_msb, 0x03);
+  send(data_entry_msb, 0x04);
+  EXPECT_THAT(convert(input_), ElementsAreArray(rpn(0x01, 0x02, 0x03, 0x00)));
 }
 
-// Reset All Controllers also forgets a pending Data Entry MSB. The reset message itself is passed through.
-TEST(UMPToMidi2, ResetAllControllersForgetsDataEntryMSB) {
-  constexpr auto group = std::uint8_t{0x1};
-  constexpr auto channel = std::uint8_t{0xF};
-
-  std::vector<std::uint32_t> input;
+// M2-104 section D.3.3: a held Data Entry MSB is sent when a parameter number controller (CC 98-101) is received. It
+// is sent with the parameter number in effect when it was received.
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, ParameterNumberSendsHeldValue) {
   using enum midi2::ump::control;
-  auto const cc = [] constexpr { return midi2::ump::m1cvm::control_change{}.group(group).channel(channel); };
-  auto const append = [&input](std::uint32_t v) {
-    input.push_back(v);
-    return false;
+  send(nrpn_msb, 0x01);
+  send(nrpn_lsb, 0x02);
+  send(data_entry_msb, 0x03);
+  send(nrpn_lsb, 0x05);
+  EXPECT_THAT(convert(input_), ElementsAreArray(nrpn(0x01, 0x02, 0x03, 0x00)));
+}
+
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, EachParameterNumberControllerSendsHeldValue) {
+  using enum midi2::ump::control;
+  for (auto const controller : {nrpn_msb, nrpn_lsb, rpn_msb, rpn_lsb}) {
+    input_.clear();
+    send(rpn_msb, 0x01);
+    send(rpn_lsb, 0x02);
+    send(data_entry_msb, 0x03);
+    send(controller, 0x10);
+    EXPECT_THAT(convert(input_), ElementsAreArray(rpn(0x01, 0x02, 0x03, 0x00)))
+        << "controller " << static_cast<unsigned>(std::to_underlying(controller));
+  }
+}
+
+// A Data Entry LSB completes the value, so a following parameter number doesn't send it a second time.
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, DataEntryLSBSendsOnce) {
+  using enum midi2::ump::control;
+  send(rpn_msb, 0x01);
+  send(rpn_lsb, 0x02);
+  send(data_entry_msb, 0x03);
+  send(data_entry_lsb, 0x04);
+  send(rpn_msb, 0x05);
+  EXPECT_THAT(convert(input_), ElementsAreArray(rpn(0x01, 0x02, 0x03, 0x04)));
+}
+
+// Once MSB and LSB have been sent, a fine adjustment requires only the LSB (MIDI 1.0 Detailed Specification).
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, LSBOnlyAdjustmentsAreSent) {
+  using enum midi2::ump::control;
+  send(rpn_msb, 0x01);
+  send(rpn_lsb, 0x02);
+  send(data_entry_msb, 0x03);
+  send(data_entry_lsb, 0x04);
+  send(data_entry_lsb, 0x05);
+  EXPECT_THAT(convert(input_), ElementsAreArray(concat(rpn(0x01, 0x02, 0x03, 0x04), rpn(0x01, 0x02, 0x03, 0x05))));
+}
+
+// The RPN Null message ends the RPN, so the held value is sent first. It must not then be combined with a Data Entry
+// LSB sent for a newly selected parameter.
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, RPNNullSendsHeldValueThenForgetsIt) {
+  using enum midi2::ump::control;
+  send(rpn_msb, 0x01);
+  send(rpn_lsb, 0x02);
+  send(data_entry_msb, 0x03);
+  send(rpn_msb, 0x7F);
+  send(rpn_lsb, 0x7F);
+  send(rpn_msb, 0x04);
+  send(rpn_lsb, 0x05);
+  send(data_entry_lsb, 0x06);
+  EXPECT_THAT(convert(input_), ElementsAreArray(rpn(0x01, 0x02, 0x03, 0x00)));
+}
+
+// Reset All Controllers sends any held value, then forgets the RPN/NRPN state. The reset message itself is passed
+// through.
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, ResetAllControllersSendsHeldValueThenForgetsIt) {
+  using enum midi2::ump::control;
+  send(nrpn_msb, 0x01);
+  send(nrpn_lsb, 0x02);
+  send(data_entry_msb, 0x03);
+  send(reset_all_controllers, 0x00);
+  auto const reset = midi2::ump::m2cvm::control_change{}.group(group).channel(channel).controller(
+      std::to_underlying(reset_all_controllers));
+  auto const expected =
+      concat(nrpn(0x01, 0x02, 0x03, 0x00), std::vector{std::uint32_t{get<0>(reset)}, std::uint32_t{get<1>(reset)}});
+  send(nrpn_msb, 0x04);
+  send(nrpn_lsb, 0x05);
+  send(data_entry_lsb, 0x06);
+  EXPECT_THAT(convert(input_), ElementsAreArray(expected));
+}
+
+// A Data Entry MSB with no parameter number selected is never sent.
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, NoParameterNumberSendsNothing) {
+  using enum midi2::ump::control;
+  send(data_entry_msb, 0x03);
+  send(data_entry_msb, 0x04);
+  send(rpn_msb, 0x01);
+  EXPECT_THAT(convert(input_), IsEmpty());
+}
+
+// NOLINTNEXTLINE
+TEST_F(UMPToMidi2PN, FlushSendsHeldValue) {
+  using enum midi2::ump::control;
+  send(rpn_msb, 0x01);
+  send(rpn_lsb, 0x02);
+  send(data_entry_msb, 0x03);
+
+  midi2::ump::ump_to_midi2 ump2m2{0};
+  std::vector<std::uint32_t> output;
+  auto const drain = [&] {
+    while (!ump2m2.empty()) {
+      output.push_back(ump2m2.pop());
+    }
   };
-  midi2::ump::apply(cc().controller(nrpn_msb).value(0x01), append);
-  midi2::ump::apply(cc().controller(nrpn_lsb).value(0x02), append);
-  midi2::ump::apply(cc().controller(data_entry_msb).value(0x03), append);
-  midi2::ump::apply(cc().controller(reset_all_controllers).value(0), append);
-  auto const expected = convert(input | std::views::drop(input.size() - 1));
-  midi2::ump::apply(cc().controller(nrpn_msb).value(0x04), append);
-  midi2::ump::apply(cc().controller(nrpn_lsb).value(0x05), append);
-  midi2::ump::apply(cc().controller(data_entry_lsb).value(0x06), append);
-  EXPECT_THAT(convert(input), ElementsAreArray(expected));
+  for (auto const message : input_) {
+    ump2m2.push(message);
+    drain();
+  }
+  EXPECT_THAT(output, IsEmpty());
+  ump2m2.flush(group, 0);  // A different channel: nothing is held.
+  drain();
+  EXPECT_THAT(output, IsEmpty());
+  ump2m2.flush(group, channel);
+  drain();
+  EXPECT_THAT(output, ElementsAreArray(rpn(0x01, 0x02, 0x03, 0x00)));
+  ump2m2.flush(group, channel);  // The value has been sent: a second flush does nothing.
+  drain();
+  EXPECT_THAT(output, ElementsAreArray(rpn(0x01, 0x02, 0x03, 0x00)));
 }
 
 template <typename T> class UMPToMidi2PassThrough : public testing::Test {
