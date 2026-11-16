@@ -9278,7 +9278,7 @@ public:
   constexpr text_common& data(std::u8string_view const& str) {
     // NOLINTNEXTLINE(llvm-qualified-auto,readability-qualified-auto)
     auto const first = std::begin(str);
-    return this->data(first, first + std::min(this->max_size(), str.size()) + 1);
+    return this->data(first, first + std::min(this->max_size(), str.size()));
   }
 
 #if defined(MIDI2_TEXT_COMMON_STRING) && MIDI2_TEXT_COMMON_STRING
