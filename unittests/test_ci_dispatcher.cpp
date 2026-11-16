@@ -336,6 +336,80 @@ TEST_F(CIDispatcher, InvalidateMuid) {
   this->dispatch_ci(group, hdr, invalidate_muid);
 }
 // NOLINTNEXTLINE
+TEST_F(CIDispatcher, ResetAllowsASecondMessage) {
+  constexpr auto group = 0x01_u8;
+  constexpr auto receiver_muid = midi2::ci::muid{0x012345EFU};
+  constexpr header hdr{.device_id = 0x7F_b7, .version = 1_b7, .remote_muid = sender_muid_, .local_muid = receiver_muid};
+  constexpr midi2::ci::endpoint first{.status = 0b0101010_b7};
+  constexpr midi2::ci::endpoint second{.status = 0b0010101_b7};
+
+  EXPECT_CALL(config_.system, check_muid(config_.context, group, receiver_muid)).WillRepeatedly(Return(true));
+  {
+    testing::InSequence const seq;
+    EXPECT_CALL(config_.management, endpoint(config_.context, hdr, first)).Times(1);
+    EXPECT_CALL(config_.management, endpoint(config_.context, hdr, second)).Times(1);
+  }
+  this->dispatch_ci(group, hdr, first);
+  processor_.reset();
+  // The group and device ID set by the first dispatch_ci() call must survive the reset: send the raw bytes.
+  std::ranges::for_each(make_message(hdr, second), [this](std::byte const b) { processor_.dispatch(b); });
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcher, WithoutResetASecondMessageIsDiscarded) {
+  constexpr auto group = 0x01_u8;
+  constexpr auto receiver_muid = midi2::ci::muid{0x012345EFU};
+  constexpr header hdr{.device_id = 0x7F_b7, .version = 1_b7, .remote_muid = sender_muid_, .local_muid = receiver_muid};
+  constexpr midi2::ci::endpoint first{.status = 0b0101010_b7};
+  constexpr midi2::ci::endpoint second{.status = 0b0010101_b7};
+
+  EXPECT_CALL(config_.system, check_muid(config_.context, group, receiver_muid)).WillRepeatedly(Return(true));
+  EXPECT_CALL(config_.management, endpoint(config_.context, hdr, first)).Times(1);
+  this->dispatch_ci(group, hdr, first);
+  this->dispatch_ci(group, hdr, second);
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcher, ResetAbandonsPartialMessage) {
+  constexpr auto group = 0x01_u8;
+  constexpr auto receiver_muid = midi2::ci::muid{0x012345EFU};
+  constexpr header hdr{.device_id = 0x7F_b7, .version = 1_b7, .remote_muid = sender_muid_, .local_muid = receiver_muid};
+  constexpr auto information = std::array{'1'_b7, '2'_b7, '3'_b7};
+  midi2::ci::endpoint_reply const first{.status = 0_b7, .information = information};
+  constexpr midi2::ci::endpoint second{.status = 0b0010101_b7};
+
+  EXPECT_CALL(config_.system, check_muid(config_.context, group, receiver_muid)).WillRepeatedly(Return(true));
+  EXPECT_CALL(config_.management, endpoint(config_.context, hdr, second)).Times(1);
+
+  processor_.set_group(group);
+  processor_.set_device_id(hdr.device_id);
+  auto const partial = make_message(hdr, first);
+  // Stop two bytes before the end of the information field.
+  std::ranges::for_each(partial | std::views::take(partial.size() - 3U),
+                        [this](std::byte const b) { processor_.dispatch(b); });
+  processor_.reset();
+  std::ranges::for_each(make_message(hdr, second), [this](std::byte const b) { processor_.dispatch(b); });
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcher, ResetAfterOverflow) {
+  constexpr auto group = 0x01_u8;
+  constexpr auto receiver_muid = midi2::ci::muid{0x012345EFU};
+  constexpr header hdr{.device_id = 0x7F_b7, .version = 1_b7, .remote_muid = sender_muid_, .local_muid = receiver_muid};
+  std::vector<midi2::ci::b7> const text{decltype(config_)::buffer_size, 'a'_b7};
+  midi2::ci::ack const ack{.original_id = 0x34_b7,
+                           .status_code = 0x17_b7,
+                           .status_data = 0x7F_b7,
+                           .details = std::array{0x01_b7, 0x02_b7, 0x03_b7, 0x04_b7, 0x05_b7},
+                           .message = text};
+  constexpr midi2::ci::endpoint endpoint{.status = 0b0101010_b7};
+
+  EXPECT_CALL(config_.system, check_muid(config_.context, group, receiver_muid)).WillRepeatedly(Return(true));
+  EXPECT_CALL(config_.system, buffer_overflow(config_.context)).Times(1);
+  EXPECT_CALL(config_.management, endpoint(config_.context, hdr, endpoint)).Times(1);
+
+  this->dispatch_ci(group, hdr, ack);
+  processor_.reset();
+  this->dispatch_ci(group, hdr, endpoint);
+}
+// NOLINTNEXTLINE
 TEST_F(CIDispatcher, Ack) {
   constexpr auto group = 0x01_u8;
   constexpr auto receiver_muid = midi2::ci::muid{0x012345EFU};

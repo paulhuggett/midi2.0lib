@@ -77,8 +77,8 @@ concept unaligned_copyable = alignof(T) == 1 && std::is_trivially_copyable_v<T>;
 /// Exclusive Start (0xF0) byte. Messages whose Destination MUID is neither the broadcast MUID nor accepted by the
 /// system.check_muid() handler are ignored.
 ///
-/// \note Once a message has been dispatched, any further bytes are discarded: a new dispatcher is required for each
-///   message.
+/// \note Once a message has been dispatched, any further bytes are discarded until reset() is called to prepare the
+///   dispatcher for the next message.
 ///
 /// \tparam Config  A type satisfying ci_dispatcher_config (or a std::reference_wrapper<> of one) which provides the
 ///   context value, the buffer size, and the message handlers.
@@ -124,6 +124,20 @@ public:
   /// \brief Sets the device ID which is recorded in the header passed to the message handlers.
   /// \param device_id  The device ID.
   constexpr void set_device_id(b7 const device_id) noexcept { header_.device_id = device_id; }
+
+  /// \brief Prepares the dispatcher to receive a new message.
+  ///
+  /// Any partially received message is abandoned without calling a handler. The group, device ID, and configuration
+  /// are unchanged. Call this function at the start of each System Exclusive message (or after its end).
+  constexpr void reset() noexcept {
+    count_ = header_size;
+    type_ = static_cast<message>(0x00);
+    consumer_ = &ci_dispatcher::header;
+    pos_ = 0;
+    auto const device_id = header_.device_id;
+    header_ = {};
+    header_.device_id = device_id;
+  }
 
   /// \brief Processes a byte of a MIDI-CI message.
   ///
