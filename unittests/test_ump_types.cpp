@@ -458,6 +458,38 @@ TEST(UMPTypesTextCommon, InitializerListMaxLength) {
   EXPECT_EQ(message[10], 'k');
   EXPECT_EQ(message[11], 'l');
 }
+// data(u8string_view) must copy only the characters in the view: a string_view isn't null-terminated.
+TEST(UMPTypesTextCommon, DataFromStringViewStopsAtEndOfView) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using text_common = midi2::ump::flex_data::text_common;
+  // A const lvalue selects the data(std::u8string_view const&) overload rather than the range overload.
+  constexpr auto view = u8"abcdef"sv.substr(0, 2);
+  auto const message = text_common{}.group(0).data(view);
+  EXPECT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], 'a');
+  EXPECT_EQ(message[1], 'b');
+  EXPECT_EQ(message[2], '\0');
+}
+TEST(UMPTypesTextCommon, DataFromStringViewOfUnterminatedArray) {
+  using text_common = midi2::ump::flex_data::text_common;
+  // Evaluating in a constant expression means that a read past the end of the array fails to compile.
+  static constexpr std::array<char8_t, 3> chars{u8'x', u8'y', u8'z'};
+  static constexpr std::u8string_view view{chars.data(), chars.size()};
+  auto const message = text_common{}.group(0).data(view);
+  EXPECT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[2], 'z');
+}
+TEST(UMPTypesTextCommon, DataFromStringViewTruncatesAtMaxSize) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using text_common = midi2::ump::flex_data::text_common;
+  constexpr auto view = u8"abcdefghijklmn"sv;
+  auto const message = text_common{}.group(0).data(view);
+  EXPECT_EQ(message.size(), 12U);
+  EXPECT_EQ(message[11], 'l');
+}
+
 TEST(UMPTypesTextCommon, DataSetByIteratorSentinel) {
   // NOLINTNEXTLINE(google-build-using-namespace)
   using namespace std::literals::string_view_literals;
