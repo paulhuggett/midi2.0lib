@@ -243,6 +243,27 @@ TEST(UMPTypesSysex7, ReadArray) {
   EXPECT_EQ(message[5], 0x00);
 }
 
+// M2-104-UM section 7.5.7: a key signature has up to 7 sharps or 7 flats; -8 means unknown or non-standard.
+TEST(UMPTypesFlexDataSetKeySignature, AllSharpsFlatsValuesAreValid) {
+  using midi2::ump::flex_data::note;
+  using midi2::ump::flex_data::set_key_signature;
+  using midi2::ump::flex_data::sharps_flats;
+  for (auto v = -8; v <= 7; ++v) {
+    auto const sf = static_cast<sharps_flats>(v);
+    auto const message = set_key_signature{}.group(0).sharps_flats(sf).tonic_note(note::c);
+    EXPECT_TRUE(midi2::ump::check(message)) << "sharps/flats value " << v;
+    EXPECT_EQ(message.sharps_flats(), sf);
+    EXPECT_EQ(message.sharps_flats_raw(), v);
+  }
+}
+
+TEST(UMPTypesFlexDataSetChordName, TonicSharpsFlatsOutsideEnumerationIsInvalid) {
+  using midi2::ump::flex_data::set_chord_name;
+  using midi2::ump::flex_data::sharps_flats;
+  auto const message = set_chord_name{}.group(0).tonic_sharps_flats(static_cast<sharps_flats>(3));
+  EXPECT_FALSE(midi2::ump::check(message));
+}
+
 // M2-104-UM Figure 51: the low byte of word 0 is option flags (bits 7-2), D (bit 1), S (bit 0).
 TEST(UMPTypesM2CVMPerNoteManagement, FlagsAreIndependent) {
   using per_note_management = midi2::ump::m2cvm::per_note_management;

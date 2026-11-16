@@ -8106,6 +8106,18 @@ enum class sharps_flats : std::int8_t { MIDI2_SHARPS_FLATS };
 #undef MIDI2_X
 }
 
+/// \brief Returns true if the argument is a valid value for the sharps/flats field of a set_key_signature message.
+///
+/// Unlike the sharps/flats fields of a set_chord_name message, which are limited to the members of the sharps_flats
+/// enumeration, a key signature may have up to 7 sharps (1 to 7) or up to 7 flats (-1 to -7). A value of 0 means no
+/// sharps or flats and -8 means unknown or non-standard.
+///
+/// \param v  A value to be checked.
+/// \returns True if the argument is a valid key signature sharps/flats value, false otherwise.
+[[nodiscard]] constexpr bool valid_key_signature_sharps_flats(std::underlying_type_t<sharps_flats> const v) noexcept {
+  return v >= -8 && v <= 7;
+}
+
 /// An X macro which lists the members of the midi2::ump::flex_data::note enumeration and their values.
 #define MIDI2_NOTE      \
   MIDI2_X(unknown, 0x0) \
@@ -8305,10 +8317,12 @@ public:
     /// Checks that the fields of this word hold valid values for this message.
     /// \returns True if the word is valid, false otherwise.
     [[nodiscard]] constexpr bool check() const noexcept {
-      return valid_sharps_flats(get_signed<sharps_flats>()) && valid_note(get_signed<tonic_note>());
+      return valid_key_signature_sharps_flats(get_signed<sharps_flats>()) && valid_note(get_signed<tonic_note>());
     }
     /// Defines the bit position of the sharps/flats field. This is a 4-bit two's complement value: positive values give
-    /// the number of sharps, negative values the number of flats. -8 means unknown or non-standard.
+    /// the number of sharps (up to 7), negative values the number of flats (up to 7). -8 means unknown or
+    /// non-standard. Values other than those of the sharps_flats enumeration may be set by casting an integer to
+    /// that type.
     using sharps_flats = adt::bit_range<28, 4>;
     /// Defines the bit position of the tonic note field. See midi2::ump::flex_data::note.
     using tonic_note = adt::bit_range<24, 4>;
