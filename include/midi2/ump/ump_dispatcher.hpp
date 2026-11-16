@@ -98,12 +98,6 @@ template <typename Context> struct function_config {
   dispatcher_backend::flex_data_function<Context> flex;   ///< Callbacks for flex data messages.
 };
 
-/// \brief Satisfied by types which have a word() member function returning a value convertible to std::uint32_t.
-template <typename T>
-concept word_memfun = requires(T a) {
-  { a.word() } -> std::convertible_to<std::uint32_t>;
-};
-
 /// \brief Accepts a sequence of 32-bit UMP words, assembles them into complete messages, and calls the configured
 /// handler for each message.
 ///
