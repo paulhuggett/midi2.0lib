@@ -1145,7 +1145,7 @@ protected:
   static std::string make_json(std::size_t const length) {
     std::string result = "[";
     auto separator = ""sv;
-    for (auto n = 0U; result.size() < length - 1; ++n) {
+    for (auto n = 0U; result.size() < length - 1; ++n) {  // NOSONAR: n is a value, not the loop's counter.
       result += separator;
       result += std::to_string(n);
       separator = ","sv;
@@ -1375,12 +1375,12 @@ TEST(CIDispatcherFunctionStream, BufferedConfigOverflows) {
 
 // A context type with a constructor that takes several arguments. It counts the copies and moves that were needed to
 // produce an instance.
-class in_place_context {
+class in_place_context {  // NOSONAR: the constructors count transfers; there is no resource to manage.
 public:
   in_place_context(std::string name, std::unique_ptr<int> number) : name_{std::move(name)}, number_{*number} {}
   in_place_context(in_place_context const& other)
       : name_{other.name_}, number_{other.number_}, transfers_{other.transfers_ + 1} {}
-  in_place_context(in_place_context&& other) noexcept
+  in_place_context(in_place_context&& other) noexcept  // NOSONAR: must exist so that any move is counted.
       : name_{std::move(other.name_)}, number_{other.number_}, transfers_{other.transfers_ + 1} {}
   ~in_place_context() noexcept = default;
   in_place_context& operator=(in_place_context const&) = delete;
@@ -1396,7 +1396,7 @@ private:
   int transfers_ = 0;
 };
 
-template <typename Config> class CIDispatcherInPlace : public testing::Test {
+template <typename Config> class CIDispatcherInPlace : public testing::Test {  // NOSONAR: tests use its members.
 protected:
   using dispatcher_type = midi2::ci::ci_dispatcher<Config>;
 
