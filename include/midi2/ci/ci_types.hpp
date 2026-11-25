@@ -1932,7 +1932,7 @@ struct property_exchange_pt2 {
   /// \brief Length of the following property data (LSB first).
   byte_array<2> data_length;
   /// \brief Property data (array length given by data_length).
-  char data[1];
+  std::byte data[1];
 };
 static_assert(offsetof(property_exchange_pt2, number_of_chunks) == 0);
 static_assert(offsetof(property_exchange_pt2, chunk_number) == 2);
@@ -1981,7 +1981,7 @@ public:
   /// \returns The new instance.
   [[nodiscard]] static constexpr property_exchange make(chunk_info const& chunk, b7 const request,
                                                         std::span<char const> const header,
-                                                        std::span<char const> const data = {}) noexcept {
+                                                        std::span<std::byte const> const data = {}) noexcept {
     return {.chunk = chunk, .request = request, .header = header, .data = data};
   }
   /// \brief Converts to the packed (on-the-wire) first part (request ID and header) of the message representation.
@@ -2005,7 +2005,7 @@ public:
         .number_of_chunks = details::to_le7(chunk.number_of_chunks),
         .chunk_number = details::to_le7(chunk.chunk_number),
         .data_length = details::to_le7(static_cast<b14>(data.size_bytes())),
-        .data = {'\0'},
+        .data = {std::byte{0}},
     };
   }
   /// \brief Compares two property_exchange values for equality.
@@ -2022,8 +2022,8 @@ public:
   b7 request;
   /// \brief The header data.
   std::span<char const> header;
-  /// \brief The property data.
-  std::span<char const> data;
+  /// \brief The property data. This is JSON text unless the header's "mutualEncoding" or "mediaType" say otherwise.
+  std::span<std::byte const> data;
 };
 
 /// \brief Inquiry: Get Property Data (M2-101 section 8.7).
@@ -2040,6 +2040,36 @@ using subscription = property_exchange<property_exchange_type::subscription>;
 using subscription_reply = property_exchange<property_exchange_type::subscription_reply>;
 /// \brief Notify (M2-101 section 8.13).
 using notify = property_exchange<property_exchange_type::notify>;
+
+/// \brief The fixed fields at the start of a streamed Property Exchange message.
+///
+/// Passed to the start() handler of a \ref dispatcher_backend::property_exchange_stream backend before any of the
+/// message's header data.
+struct stream_start {
+  /// \brief Compares two stream_start values for equality.
+  /// \returns True if the two values are equal.
+  constexpr friend bool operator==(stream_start const&, stream_start const&) noexcept = default;
+  /// \brief The type of the Property Exchange message.
+  property_exchange_type type = property_exchange_type::get;
+  /// \brief The Request ID.
+  b7 request;
+  /// \brief The total number of bytes of header data which follow.
+  b14 header_length;
+};
+
+/// \brief The chunk fields of a streamed Property Exchange message.
+///
+/// Passed to the chunk() handler of a \ref dispatcher_backend::property_exchange_stream backend after all of the
+/// message's header data and before any of its property data.
+struct stream_chunk {
+  /// \brief Compares two stream_chunk values for equality.
+  /// \returns True if the two values are equal.
+  constexpr friend bool operator==(stream_chunk const&, stream_chunk const&) noexcept = default;
+  /// \brief The chunk information.
+  chunk_info chunk;
+  /// \brief The total number of bytes of property data in this chunk.
+  b14 data_length;
+};
 
 }  // end namespace property_exchange
 

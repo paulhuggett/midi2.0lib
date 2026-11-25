@@ -17,6 +17,7 @@
 #include "midi2/utils.hpp"
 
 // Standard library
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +25,9 @@
 #include <ostream>
 #include <ranges>
 #include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 // google mock/test/fuzz
 #include <gmock/gmock.h>
@@ -733,6 +737,15 @@ TEST_F(CIDispatcher, PropertyExchangeCapabilitiesReply) {
 
 // NOLINTNEXTLINE(google-build-using-namespace)
 using namespace std::string_view_literals;
+
+namespace {
+
+/// \returns The bytes of \p s, as used for Property Exchange property data.
+std::span<std::byte const> bytes(std::string_view const s) noexcept {
+  return std::as_bytes(std::span{s});
+}
+
+}  // end anonymous namespace
 // NOLINTNEXTLINE
 TEST_F(CIDispatcher, PropertyExchangeGetPropertyData) {
   constexpr auto group = 0x01_u8;
@@ -764,11 +777,11 @@ TEST_F(CIDispatcher, PropertyExchangeGetPropertyDataReply) {
       .local_muid = destination_muid_,
   };
   using get_reply = midi2::ci::property_exchange::get_reply;
-  constexpr get_reply gr{
+  get_reply const gr{
       .chunk = midi2::ci::property_exchange::chunk_info{1_b14, 1_b14},
       .request = 1_b7,
       .header = R"({"status":200})"sv,
-      .data = R"([{"resource":"DeviceInfo"},{"resource":"ChannelList"},{"resource":"CMList"}])"sv,
+      .data = bytes(R"([{"resource":"DeviceInfo"},{"resource":"ChannelList"},{"resource":"CMList"}])"sv),
   };
   EXPECT_CALL(config_.system, check_muid(config_.context, group, destination_muid_)).WillRepeatedly(Return(true));
   EXPECT_CALL(config_.property_exchange,
@@ -791,11 +804,11 @@ TEST_F(CIDispatcher, PropertyExchangeSetPropertyData) {
       .local_muid = destination_muid_,
   };
   using midi2::ci::property_exchange::set;
-  constexpr set spd{
+  set const spd{
       .chunk = midi2::ci::property_exchange::chunk_info{1_b14, 1_b14},
       .request = 1_b7,
       .header = R"({"resource":"X-ProgramEdit","resId":"abcd"})"sv,
-      .data = R"({"name":"Violin 2","lfoSpeed":10,"lfoWaveform":"sine"})"sv,
+      .data = bytes(R"({"name":"Violin 2","lfoSpeed":10,"lfoWaveform":"sine"})"sv),
   };
   EXPECT_CALL(config_.system, check_muid(config_.context, group, destination_muid_)).WillRepeatedly(Return(true));
   EXPECT_CALL(config_.property_exchange,
@@ -844,11 +857,11 @@ TEST_F(CIDispatcher, PropertyExchangeSubscription) {
     .device_id = destination, .version = 2_b7, .remote_muid = sender_muid_, .local_muid = destination_muid_,
   };
   using midi2::ci::property_exchange::subscription;
-  constexpr subscription sub{
+  subscription const sub{
       .chunk = midi2::ci::property_exchange::chunk_info{1_b14, 1_b14},
       .request = 17_b7,
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_CALL(config_.system, check_muid(config_.context, group, destination_muid_)).WillRepeatedly(Return(true));
   EXPECT_CALL(config_.property_exchange,
@@ -856,7 +869,7 @@ TEST_F(CIDispatcher, PropertyExchangeSubscription) {
                            AllOf(Field("chunk", &subscription::chunk, Eq(sub.chunk)),
                                  Field("request", &subscription::request, Eq(sub.request)),
                                  Field("header", &subscription::header, ElementsAreArray(header)),
-                                 Field("data", &subscription::data, ElementsAreArray(data)))));
+                                 Field("data", &subscription::data, ElementsAreArray(bytes(data))))));
 
   this->dispatch_ci(group, hdr, sub);
 }
@@ -871,11 +884,11 @@ TEST_F(CIDispatcher, PropertyExchangeSubscriptionReply) {
     .device_id = 0x0F_b7, .version = 2_b7, .remote_muid = sender_muid_, .local_muid = destination_muid_,
   };
   using midi2::ci::property_exchange::subscription_reply;
-  constexpr subscription_reply sub_reply{
+  subscription_reply const sub_reply{
       .chunk = midi2::ci::property_exchange::chunk_info{1_b14, 1_b14},
       .request = 17_b7,
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_CALL(config_.system, check_muid(config_.context, group, destination_muid_)).WillRepeatedly(Return(true));
   EXPECT_CALL(config_.property_exchange,
@@ -883,7 +896,7 @@ TEST_F(CIDispatcher, PropertyExchangeSubscriptionReply) {
                                  AllOf(Field("chunk", &subscription_reply::chunk, Eq(sub_reply.chunk)),
                                        Field("request", &subscription_reply::request, Eq(sub_reply.request)),
                                        Field("header", &subscription_reply::header, ElementsAreArray(header)),
-                                       Field("data", &subscription_reply::data, ElementsAreArray(data)))));
+                                       Field("data", &subscription_reply::data, ElementsAreArray(bytes(data))))));
 
   this->dispatch_ci(group, hdr, sub_reply);
 }
@@ -897,18 +910,18 @@ TEST_F(CIDispatcher, PropertyExchangeNotify) {
     .device_id = 0x0F_b7, .version = 2_b7, .remote_muid = sender_muid_, .local_muid = destination_muid_,
   };
   using midi2::ci::property_exchange::notify;
-  constexpr notify note{
+  notify const note{
       .chunk = midi2::ci::property_exchange::chunk_info{1_b14, 1_b14},
       .request = 1_b7,
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_CALL(config_.system, check_muid(config_.context, group, destination_muid_)).WillRepeatedly(Return(true));
   EXPECT_CALL(config_.property_exchange, notify(config_.context, hdr,
                                                 AllOf(Field("chunk", &notify::chunk, Eq(note.chunk)),
                                                       Field("request", &notify::request, Eq(note.request)),
                                                       Field("header", &notify::header, ElementsAreArray(header)),
-                                                      Field("data", &notify::data, ElementsAreArray(data)))));
+                                                      Field("data", &notify::data, ElementsAreArray(bytes(data))))));
 
   this->dispatch_ci(group, hdr, note);
 }
@@ -1028,6 +1041,334 @@ TEST_F(CIDispatcher, ProcessInquiryMidiMessageReportEnd) {
   this->dispatch_ci(group, hdr, midi2::ci::process_inquiry::midi_message_report_end{});
 }
 
+// A property_exchange_stream backend which records the calls that it receives.
+struct stream_recorder {
+  std::vector<std::string> events;
+  std::vector<header> headers;  // The MIDI-CI header passed to each call.
+  midi2::ci::property_exchange::stream_start start_fields;
+  midi2::ci::property_exchange::stream_chunk chunk_fields;
+  std::string header_text;
+  std::string data_text;
+  std::size_t largest_piece = 0;
+
+  void start(context_type, header const& ci, midi2::ci::property_exchange::stream_start const& s) {
+    this->record("start", ci);
+    start_fields = s;
+  }
+  void header_data(context_type, header const& ci, std::span<char const> const piece) {
+    this->record("header_data", ci);
+    header_text.append(piece.begin(), piece.end());
+    largest_piece = std::max(largest_piece, piece.size());
+  }
+  void chunk(context_type, header const& ci, midi2::ci::property_exchange::stream_chunk const& c) {
+    this->record("chunk", ci);
+    chunk_fields = c;
+  }
+  void property_data(context_type, header const& ci, std::span<std::byte const> const piece) {
+    this->record("property_data", ci);
+    std::ranges::transform(piece, std::back_inserter(data_text),
+                           [](std::byte const b) { return static_cast<char>(b); });
+    largest_piece = std::max(largest_piece, piece.size());
+  }
+  void end(context_type, header const& ci) { this->record("end", ci); }
+  void abort(context_type, header const& ci) { this->record("abort", ci); }
+
+  void clear() { *this = stream_recorder{}; }
+  [[nodiscard]] std::string last_event() const { return events.empty() ? std::string{} : events.back(); }
+
+private:
+  void record(char const* const event, header const& ci) {
+    events.emplace_back(event);
+    headers.push_back(ci);
+  }
+};
+
+// The expected sequence of events for a message whose header and data are sent in pieces of at most piece_size bytes.
+std::vector<std::string> expected_events(std::size_t const header_length, std::size_t const data_length,
+                                         std::size_t const piece_size) {
+  std::vector<std::string> result{"start"};
+  result.insert(result.end(), (header_length + piece_size - 1) / piece_size, "header_data");
+  result.emplace_back("chunk");
+  result.insert(result.end(), (data_length + piece_size - 1) / piece_size, "property_data");
+  result.emplace_back("end");
+  return result;
+}
+
+class CIDispatcherStream : public testing::Test {
+public:
+  CIDispatcherStream() : processor_{config_} {
+    EXPECT_CALL(config_.system, check_muid(config_.context, group_, destination_muid_)).WillRepeatedly(Return(true));
+  }
+
+protected:
+  struct stream_config {
+    [[no_unique_address]] context_type context;
+    static constexpr auto buffer_size = std::size_t{16};
+    StrictMock<mock_system_callbacks> system;
+    StrictMock<mock_management_callbacks> management;
+    StrictMock<mock_profile_callbacks> profile;
+    // A StrictMock so that a call to the buffered property exchange handlers fails the test.
+    StrictMock<mock_property_exchange_callbacks> property_exchange;
+    StrictMock<mock_process_inquiry_callbacks> process_inquiry;
+    stream_recorder property_exchange_stream;
+  };
+  static_assert(midi2::ci::ci_dispatcher_stream_config<stream_config>);
+
+  stream_config config_;
+  midi2::ci::ci_dispatcher<std::reference_wrapper<stream_config>> processor_;
+
+  static constexpr auto group_ = 0x01_u8;
+  static constexpr auto sender_muid_ = midi2::ci::muid{from_le7(std::array{0x7F_b, 0x7E_b, 0x7D_b, 0x7C_b})};
+  static constexpr auto destination_muid_ = midi2::ci::muid{from_le7(std::array{0x62_b, 0x16_b, 0x63_b, 0x26_b})};
+  static constexpr header hdr_{
+      .device_id = 0x0F_b7,
+      .version = 2_b7,
+      .remote_muid = sender_muid_,
+      .local_muid = destination_muid_,
+  };
+
+  template <typename Content> static std::vector<std::byte> make_message(Content const& content) {
+    std::vector<std::byte> message;
+    midi2::ci::create_message(std::back_inserter(message), midi2::ci::trivial_sentinel{}, hdr_, content);
+    return message;
+  }
+  void dispatch(std::span<std::byte const> const message) {
+    processor_.set_group(group_);
+    processor_.set_device_id(hdr_.device_id);
+    std::ranges::for_each(message, [this](std::byte const b) { processor_.dispatch(b); });
+  }
+
+  // Returns a string of the given length containing a JSON array of numbers.
+  static std::string make_json(std::size_t const length) {
+    std::string result = "[";
+    auto separator = ""sv;
+    for (auto n = 0U; result.size() < length - 1; ++n) {
+      result += separator;
+      result += std::to_string(n);
+      separator = ","sv;
+    }
+    result.resize(length - 1, ' ');
+    result += ']';
+    return result;
+  }
+};
+
+static_assert(!midi2::ci::ci_dispatcher_stream_config<midi2::ci::function_config<context_type, 16>>);
+static_assert(midi2::ci::ci_dispatcher_stream_config<midi2::ci::function_stream_config<context_type, 16>>);
+
+// The buffer must be large enough to hold a MIDI-CI message header.
+static_assert(sizeof(midi2::ci::packed::header) == 13);
+static_assert(!midi2::ci::ci_dispatcher_config<midi2::ci::function_config<context_type, 12>>);
+static_assert(midi2::ci::ci_dispatcher_config<midi2::ci::function_config<context_type, 13>>);
+static_assert(!midi2::ci::ci_dispatcher_stream_config<midi2::ci::function_stream_config<context_type, 12>>);
+static_assert(midi2::ci::ci_dispatcher_stream_config<midi2::ci::function_stream_config<context_type, 13>>);
+
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, LargeGetReply) {
+  using get_reply = midi2::ci::property_exchange::get_reply;
+  auto const header_json = std::string{R"({"status":200,"cacheTime":3600,"mediaType":"application/json"})"};
+  auto const data_json = make_json(5000);
+  auto const gr = get_reply{.chunk = midi2::ci::property_exchange::chunk_info{1_b14, 1_b14},
+                            .request = 0x23_b7,
+                            .header = header_json,
+                            .data = bytes(data_json)};
+  auto const message = make_message(gr);
+  ASSERT_GT(message.size(), 10 * stream_config::buffer_size);
+  this->dispatch(message);
+
+  auto const& rec = config_.property_exchange_stream;
+  EXPECT_THAT(rec.events,
+              ElementsAreArray(expected_events(header_json.size(), data_json.size(), stream_config::buffer_size)));
+  EXPECT_THAT(rec.headers, testing::Each(Eq(hdr_)));
+  EXPECT_EQ(rec.start_fields, (midi2::ci::property_exchange::stream_start{
+                                  .type = midi2::ci::property_exchange::property_exchange_type::get_reply,
+                                  .request = 0x23_b7,
+                                  .header_length = midi2::ci::b14{static_cast<std::uint16_t>(header_json.size())}}));
+  EXPECT_EQ(rec.chunk_fields,
+            (midi2::ci::property_exchange::stream_chunk{
+                .chunk = gr.chunk, .data_length = midi2::ci::b14{static_cast<std::uint16_t>(data_json.size())}}));
+  EXPECT_EQ(rec.header_text, header_json);
+  EXPECT_EQ(rec.data_text, data_json);
+  EXPECT_EQ(rec.largest_piece, stream_config::buffer_size);
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, MessageTypes) {
+  namespace pe = midi2::ci::property_exchange;
+  using pet = pe::property_exchange_type;
+  auto const chunk = pe::chunk_info{1_b14, 1_b14};
+  auto const header_json = std::string{R"({"resource":"DeviceInfo"})"};
+  auto const data_json = std::string{R"({"manufacturer":"Acme"})"};
+
+  auto check = [&, this](auto const& msg, pet const expected) {
+    SCOPED_TRACE(static_cast<int>(expected));
+    processor_.reset();
+    config_.property_exchange_stream.clear();
+    this->dispatch(make_message(msg));
+    auto const& rec = config_.property_exchange_stream;
+    EXPECT_EQ(rec.start_fields.type, expected);
+    EXPECT_EQ(rec.header_text, header_json);
+    EXPECT_EQ(rec.last_event(), "end");
+  };
+  check(pe::get::make(chunk, 1_b7, header_json), pet::get);
+  check(pe::get_reply::make(chunk, 1_b7, header_json, bytes(data_json)), pet::get_reply);
+  check(pe::set::make(chunk, 1_b7, header_json, bytes(data_json)), pet::set);
+  check(pe::set_reply::make(chunk, 1_b7, header_json, bytes(data_json)), pet::set_reply);
+  check(pe::subscription::make(chunk, 1_b7, header_json, bytes(data_json)), pet::subscription);
+  check(pe::subscription_reply::make(chunk, 1_b7, header_json, bytes(data_json)), pet::subscription_reply);
+  check(pe::notify::make(chunk, 1_b7, header_json, bytes(data_json)), pet::notify);
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, EmptyHeaderAndData) {
+  using notify = midi2::ci::property_exchange::notify;
+  this->dispatch(make_message(notify::make(midi2::ci::property_exchange::chunk_info{1_b14, 1_b14}, 2_b7, {}, {})));
+
+  auto const& rec = config_.property_exchange_stream;
+  EXPECT_THAT(rec.events, ElementsAreArray({"start", "chunk", "end"}));
+  EXPECT_EQ(rec.start_fields.header_length, 0_b14);
+  EXPECT_EQ(rec.chunk_fields.data_length, 0_b14);
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, ExactMultipleOfBufferSize) {
+  using set = midi2::ci::property_exchange::set;
+  auto const header_json = make_json(2 * stream_config::buffer_size);
+  auto const data_json = make_json(3 * stream_config::buffer_size);
+  this->dispatch(make_message(
+      set::make(midi2::ci::property_exchange::chunk_info{1_b14, 1_b14}, 3_b7, header_json, bytes(data_json))));
+
+  auto const& rec = config_.property_exchange_stream;
+  EXPECT_THAT(rec.events, ElementsAreArray({"start", "header_data", "header_data", "chunk", "property_data",
+                                            "property_data", "property_data", "end"}));
+  EXPECT_EQ(rec.header_text, header_json);
+  EXPECT_EQ(rec.data_text, data_json);
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, MultipleChunks) {
+  using get_reply = midi2::ci::property_exchange::get_reply;
+  using chunk_info = midi2::ci::property_exchange::chunk_info;
+  auto const header_json = std::string{R"({"status":200})"};
+  auto const data_json = make_json(100);
+  auto const first = std::string_view{data_json}.substr(0, 60);
+  auto const second = std::string_view{data_json}.substr(60);
+
+  std::string received;
+  this->dispatch(make_message(get_reply::make(chunk_info{2_b14, 1_b14}, 4_b7, header_json, bytes(first))));
+  EXPECT_EQ(config_.property_exchange_stream.chunk_fields.chunk, (chunk_info{2_b14, 1_b14}));
+  EXPECT_EQ(config_.property_exchange_stream.last_event(), "end");
+  received += config_.property_exchange_stream.data_text;
+
+  processor_.reset();
+  config_.property_exchange_stream.clear();
+  this->dispatch(make_message(get_reply::make(chunk_info{2_b14, 2_b14}, 4_b7, header_json, bytes(second))));
+  EXPECT_EQ(config_.property_exchange_stream.chunk_fields.chunk, (chunk_info{2_b14, 2_b14}));
+  EXPECT_EQ(config_.property_exchange_stream.last_event(), "end");
+  received += config_.property_exchange_stream.data_text;
+
+  EXPECT_EQ(received, data_json);
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, ResetPartWayThroughCallsAbort) {
+  using set = midi2::ci::property_exchange::set;
+  auto const header_json = std::string{R"({"resource":"X-Big"})"};
+  auto const data_json = make_json(200);
+  auto const message = make_message(
+      set::make(midi2::ci::property_exchange::chunk_info{1_b14, 1_b14}, 5_b7, header_json, bytes(data_json)));
+
+  // Send all but the last 50 bytes.
+  this->dispatch(std::span{message}.first(message.size() - 50));
+  EXPECT_EQ(config_.property_exchange_stream.last_event(), "property_data");
+  processor_.reset();
+  EXPECT_EQ(config_.property_exchange_stream.last_event(), "abort");
+  EXPECT_THAT(config_.property_exchange_stream.headers, testing::Each(Eq(hdr_)));
+
+  // A second reset must not call abort() again.
+  auto const events = config_.property_exchange_stream.events.size();
+  processor_.reset();
+  EXPECT_EQ(config_.property_exchange_stream.events.size(), events);
+
+  // The next message is received in full.
+  config_.property_exchange_stream.clear();
+  this->dispatch(message);
+  EXPECT_EQ(config_.property_exchange_stream.last_event(), "end");
+  EXPECT_EQ(config_.property_exchange_stream.data_text, data_json);
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, ResetAfterEndDoesNotCallAbort) {
+  using notify = midi2::ci::property_exchange::notify;
+  this->dispatch(make_message(notify::make(midi2::ci::property_exchange::chunk_info{1_b14, 1_b14}, 6_b7,
+                                           R"({"command":"notify"})", bytes("{}"))));
+  ASSERT_EQ(config_.property_exchange_stream.last_event(), "end");
+  processor_.reset();
+  EXPECT_EQ(config_.property_exchange_stream.last_event(), "end");
+}
+// NOLINTNEXTLINE
+TEST_F(CIDispatcherStream, CapabilitiesAreNotStreamed) {
+  using capabilities = midi2::ci::property_exchange::capabilities;
+  constexpr capabilities caps{.num_simultaneous = 2_b7, .major_version = 0_b7, .minor_version = 0_b7};
+  EXPECT_CALL(config_.property_exchange, capabilities(config_.context, hdr_, caps));
+  this->dispatch(make_message(caps));
+  EXPECT_THAT(config_.property_exchange_stream.events, IsEmpty());
+}
+// NOLINTNEXTLINE
+TEST(CIDispatcherFunctionStream, LargeMessage) {
+  struct empty {};
+  constexpr auto buffer_size = std::size_t{32};
+  using chunk_info = midi2::ci::property_exchange::chunk_info;
+  using get_reply = midi2::ci::property_exchange::get_reply;
+
+  auto const header_json = std::string(100, ' ');
+  auto const data_json = std::string(1000, 'x');
+  std::vector<std::byte> message;
+  midi2::ci::create_message(std::back_inserter(message), midi2::ci::trivial_sentinel{},
+                            header{.device_id = 0_b7, .version = 2_b7, .remote_muid = 1_b28, .local_muid = 2_b28},
+                            get_reply::make(chunk_info{1_b14, 1_b14}, 7_b7, header_json, bytes(data_json)));
+
+  std::string header_text;
+  std::string data_text;
+  auto ended = false;
+  midi2::ci::ci_dispatcher<midi2::ci::function_stream_config<empty, buffer_size>> dispatcher;
+  auto& config = dispatcher.config();
+  config.system.on_check_muid([](empty, std::uint8_t, midi2::ci::muid) { return true; }).on_buffer_overflow([](empty) {
+    FAIL() << "unexpected buffer overflow";
+  });
+  config.property_exchange_stream
+      .on_header_data(
+          [&](empty, header const&, std::span<char const> piece) { header_text.append(piece.begin(), piece.end()); })
+      .on_property_data([&](empty, header const&, std::span<std::byte const> piece) {
+        std::ranges::transform(piece, std::back_inserter(data_text),
+                               [](std::byte const b) { return static_cast<char>(b); });
+      })
+      .on_end([&](empty, header const&) { ended = true; });
+  std::ranges::for_each(message, [&dispatcher](std::byte const b) { dispatcher.dispatch(b); });
+
+  EXPECT_EQ(header_text, header_json);
+  EXPECT_EQ(data_text, data_json);
+  EXPECT_TRUE(ended);
+}
+// NOLINTNEXTLINE
+TEST(CIDispatcherFunctionStream, BufferedConfigOverflows) {
+  struct empty {};
+  constexpr auto buffer_size = std::size_t{32};
+  using chunk_info = midi2::ci::property_exchange::chunk_info;
+  using get_reply = midi2::ci::property_exchange::get_reply;
+
+  std::vector<std::byte> message;
+  midi2::ci::create_message(std::back_inserter(message), midi2::ci::trivial_sentinel{},
+                            header{.device_id = 0_b7, .version = 2_b7, .remote_muid = 1_b28, .local_muid = 2_b28},
+                            get_reply::make(chunk_info{1_b14, 1_b14}, 7_b7, "{}", bytes(std::string(100, 'x'))));
+
+  auto overflows = 0;
+  auto replies = 0;
+  auto dispatcher = midi2::ci::make_function_dispatcher<empty, buffer_size>();
+  auto& config = dispatcher.config();
+  config.system.on_check_muid([](empty, std::uint8_t, midi2::ci::muid) { return true; })
+      .on_buffer_overflow([&overflows](empty) { ++overflows; });
+  config.property_exchange.on_get_reply([&replies](empty, header const&, get_reply const&) { ++replies; });
+  std::ranges::for_each(message, [&dispatcher](std::byte const b) { dispatcher.dispatch(b); });
+
+  EXPECT_EQ(overflows, 1);
+  EXPECT_EQ(replies, 0);
+}
+
 // This test simply gets ci_dispatcher to consume a random buffer.
 void NeverCrashes(std::vector<std::byte> const& message) {
   // Ensure the top bit of each byte of the incoming message stream is clear.
@@ -1045,13 +1386,30 @@ void NeverCrashes(std::vector<std::byte> const& message) {
   std::ranges::for_each(message2, std::bind_front(&decltype(dispatcher)::dispatch, &dispatcher));
 }
 
+// The same as NeverCrashes() but with a dispatcher which streams property exchange messages.
+void NeverCrashesStreaming(std::vector<std::byte> const& message) {
+  std::vector<std::byte> message2;
+  message2.reserve(message.size());
+  std::ranges::transform(message, std::back_inserter(message2), [](std::byte v) { return v & 0x7F_b; });
+
+  struct empty {};
+  static constexpr auto buffer_size = std::size_t{16};
+  midi2::ci::ci_dispatcher<midi2::ci::function_stream_config<empty, buffer_size>> dispatcher;
+  dispatcher.config().system.on_check_muid([](empty, std::uint8_t, midi2::ci::muid) { return true; });
+  std::ranges::for_each(message2, std::bind_front(&decltype(dispatcher)::dispatch, &dispatcher));
+  dispatcher.reset();
+}
+
 #if defined(MIDI2_FUZZTEST) && MIDI2_FUZZTEST
 // NOLINTNEXTLINE
 FUZZ_TEST(CIProcessorFuzz, NeverCrashes);
+// NOLINTNEXTLINE
+FUZZ_TEST(CIProcessorFuzz, NeverCrashesStreaming);
 #endif
 // NOLINTNEXTLINE
 TEST(CIProcessorFuzz, Empty) {
   NeverCrashes({});
+  NeverCrashesStreaming({});
 }
 
 }  // end anonymous namespace

@@ -15,8 +15,10 @@
 #define MIDI2_CI_DISPATCHER_BACKEND_HPP
 
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <span>
 
 #include "midi2/ci/ci_types.hpp"
 #include "midi2/utils.hpp"
@@ -114,6 +116,40 @@ concept property_exchange = requires(T v, Context context) {
   { v.subscription(context, header{}, property_exchange::subscription{}) } -> std::same_as<void>;
   { v.subscription_reply(context, header{}, property_exchange::subscription_reply{}) } -> std::same_as<void>;
   { v.notify(context, header{}, property_exchange::notify{}) } -> std::same_as<void>;
+};
+
+/// \brief The property_exchange_stream concept gathers the MIDI-CI dispatcher callback functions which receive
+/// Property Exchange messages in pieces rather than as a whole.
+///
+/// A dispatcher whose configuration provides a backend of this type uses it in place of the get(), get_reply(),
+/// set(), set_reply(), subscription(), subscription_reply() and notify() handlers of the property_exchange
+/// backend. Because each piece is passed to a handler as soon as it has been received, these messages may be larger
+/// than the dispatcher's buffer.
+///
+/// For each message, the functions are called in this order:
+///
+/// - start: Called once with the message type, the Request ID, and the length of the header data.
+/// - header_data: Called zero or more times, each time with the next piece of the header data. The header is always
+///   JSON text, so it is passed as characters.
+/// - chunk: Called once, after all of the header data, with the chunk information and the length of the property data.
+/// - property_data: Called zero or more times, each time with the next piece of the property data. Depending on the
+///   header's "mutualEncoding" and "mediaType" properties the data may not be text, so it is passed as bytes.
+/// - end: Called once, after all of the property data.
+///
+/// If the message is abandoned (for example, because the dispatcher's reset() member function is called) after
+/// start() but before end(), abort() is called instead of end().
+///
+/// Each function takes the context value and the MIDI-CI header. Each returns void.
+///
+/// \p Context is the type of the context value that is passed to each handler.
+template <typename T, typename Context>
+concept property_exchange_stream = requires(T v, Context context) {
+  { v.start(context, header{}, property_exchange::stream_start{}) } -> std::same_as<void>;
+  { v.header_data(context, header{}, std::span<char const>{}) } -> std::same_as<void>;
+  { v.chunk(context, header{}, property_exchange::stream_chunk{}) } -> std::same_as<void>;
+  { v.property_data(context, header{}, std::span<std::byte const>{}) } -> std::same_as<void>;
+  { v.end(context, header{}) } -> std::same_as<void>;
+  { v.abort(context, header{}) } -> std::same_as<void>;
 };
 
 /// \brief The process_inquiry concept gathers the MIDI-CI dispatcher callback functions for MIDI-CI Process Inquiry
@@ -237,6 +273,22 @@ template <typename Context> struct property_exchange_null {
   /// \brief Ignores a "Notify" message (M2-101 section 8.13).
   constexpr static void notify(Context, header const &, property_exchange::notify const &) { /* do nothing */ }
 };
+/// \brief An implementation of the streamed MIDI-CI Property Exchange message handlers which each discard their input.
+/// \tparam Context  The type of the context value that is passed to each handler.
+template <typename Context> struct property_exchange_stream_null {
+  /// \brief Ignores the start of a Property Exchange message.
+  constexpr static void start(Context, header const &, property_exchange::stream_start const &) { /* do nothing */ }
+  /// \brief Ignores a piece of a Property Exchange message's header data.
+  constexpr static void header_data(Context, header const &, std::span<char const>) { /* do nothing */ }
+  /// \brief Ignores the chunk fields of a Property Exchange message.
+  constexpr static void chunk(Context, header const &, property_exchange::stream_chunk const &) { /* do nothing */ }
+  /// \brief Ignores a piece of a Property Exchange message's property data.
+  constexpr static void property_data(Context, header const &, std::span<std::byte const>) { /* do nothing */ }
+  /// \brief Ignores the end of a Property Exchange message.
+  constexpr static void end(Context, header const &) { /* do nothing */ }
+  /// \brief Ignores the abandonment of a Property Exchange message.
+  constexpr static void abort(Context, header const &) { /* do nothing */ }
+};
 /// \brief An implementation of the MIDI-CI Process Inquiry message handlers which each discard the incoming message.
 /// \tparam Context  The type of the context value that is passed to each handler.
 template <typename Context> struct process_inquiry_null {
@@ -257,6 +309,7 @@ static_assert(system<system_null<int>, int>);
 static_assert(management<management_null<int>, int>);
 static_assert(profile<profile_null<int>, int>);
 static_assert(property_exchange<property_exchange_null<int>, int>);
+static_assert(property_exchange_stream<property_exchange_stream_null<int>, int>);
 static_assert(process_inquiry<process_inquiry_null<int>, int>);
 
 /// \brief An abstract base class for MIDI-CI system message handlers.
@@ -482,6 +535,54 @@ template <typename Context> struct property_exchange_pure {
   /// The arguments are the context value, the MIDI-CI header, and the message body.
   virtual void notify(Context, header const&, property_exchange::notify const&) = 0;
 };
+/// \brief An abstract base class for streamed MIDI-CI Property Exchange message handlers.
+///
+/// Each handler is a pure virtual function, so a derived class must override all of them. Derive from
+/// property_exchange_stream_base<> instead to override only some of them.
+///
+/// \tparam Context  The type of the context value that is passed to each handler.
+template <typename Context> struct property_exchange_stream_pure {
+  /// \brief Default constructor.
+  constexpr property_exchange_stream_pure() = default;
+  /// \brief Copy constructor.
+  constexpr property_exchange_stream_pure(property_exchange_stream_pure const&) = default;
+  /// \brief Move constructor.
+  constexpr property_exchange_stream_pure(property_exchange_stream_pure&&) noexcept = default;
+  /// \brief Destructor.
+  constexpr virtual ~property_exchange_stream_pure() noexcept = default;
+
+  /// \brief Copy assignment operator.
+  /// \returns *this
+  constexpr property_exchange_stream_pure& operator=(property_exchange_stream_pure const&) = default;
+  /// \brief Move assignment operator.
+  /// \returns *this
+  constexpr property_exchange_stream_pure& operator=(property_exchange_stream_pure&&) noexcept = default;
+
+  /// \brief Called at the start of each Property Exchange message.
+  ///
+  /// The arguments are the context value, the MIDI-CI header, and the message's fixed fields.
+  virtual void start(Context, header const&, property_exchange::stream_start const&) = 0;
+  /// \brief Called with each piece of a Property Exchange message's header data.
+  ///
+  /// The arguments are the context value, the MIDI-CI header, and the piece of header data.
+  virtual void header_data(Context, header const&, std::span<char const>) = 0;
+  /// \brief Called with the chunk fields of a Property Exchange message.
+  ///
+  /// The arguments are the context value, the MIDI-CI header, and the chunk fields.
+  virtual void chunk(Context, header const&, property_exchange::stream_chunk const&) = 0;
+  /// \brief Called with each piece of a Property Exchange message's property data.
+  ///
+  /// The arguments are the context value, the MIDI-CI header, and the piece of property data.
+  virtual void property_data(Context, header const&, std::span<std::byte const>) = 0;
+  /// \brief Called at the end of each Property Exchange message.
+  ///
+  /// The arguments are the context value and the MIDI-CI header.
+  virtual void end(Context, header const&) = 0;
+  /// \brief Called if a Property Exchange message is abandoned after start() and before end().
+  ///
+  /// The arguments are the context value and the MIDI-CI header.
+  virtual void abort(Context, header const&) = 0;
+};
 /// \brief An abstract base class for MIDI-CI Process Inquiry message handlers.
 ///
 /// Each handler is a pure virtual function, so a derived class must override all of them. Derive from
@@ -531,6 +632,7 @@ template <typename Context> struct process_inquiry_pure {
 static_assert(management<management_pure<int>, int>);
 static_assert(profile<profile_pure<int>, int>);
 static_assert(property_exchange<property_exchange_pure<int>, int>);
+static_assert(property_exchange_stream<property_exchange_stream_pure<int>, int>);
 static_assert(process_inquiry<process_inquiry_pure<int>, int>);
 
 // clang-format off
@@ -635,6 +737,27 @@ template <typename Context> struct property_exchange_base : property_exchange_pu
   /// \brief Ignores a "Notify" message (M2-101 section 8.13).
   void notify(Context, header const &, property_exchange::notify const &) override { /* do nothing */ }
 };
+// clang-format off
+/// \brief A base class which implements each streamed MIDI-CI Property Exchange message handler by doing nothing.
+///
+/// Derive from this class and override only the handlers that you want to receive.
+///
+/// \tparam Context  The type of the context value that is passed to each handler.
+template <typename Context> struct property_exchange_stream_base : property_exchange_stream_pure<Context> {
+  /// \brief Ignores the start of a Property Exchange message.
+  void start(Context, header const &, property_exchange::stream_start const &) override { /* do nothing */ }
+  /// \brief Ignores a piece of a Property Exchange message's header data.
+  void header_data(Context, header const &, std::span<char const>) override { /* do nothing */ }
+  /// \brief Ignores the chunk fields of a Property Exchange message.
+  void chunk(Context, header const &, property_exchange::stream_chunk const &) override { /* do nothing */ }
+  /// \brief Ignores a piece of a Property Exchange message's property data.
+  void property_data(Context, header const &, std::span<std::byte const>) override { /* do nothing */ }
+  /// \brief Ignores the end of a Property Exchange message.
+  void end(Context, header const &) override { /* do nothing */ }
+  /// \brief Ignores the abandonment of a Property Exchange message.
+  void abort(Context, header const &) override { /* do nothing */ }
+};
+// clang-format on
 /// \brief A base class which implements each MIDI-CI Process Inquiry message handler by doing nothing.
 ///
 /// Derive from this class and override only the handlers for the messages that you want to receive.
@@ -1237,6 +1360,119 @@ private:
 };
 
 static_assert(property_exchange<property_exchange_function<int>, int>);
+
+/// \brief A \ref property_exchange_stream backend which forwards each piece of a streamed MIDI-CI Property Exchange
+/// message to a std::function<>.
+///
+/// Functions are registered with the on_...() member functions. A call for which no function has been registered is
+/// ignored.
+///
+/// \tparam Context  The type of the context value that is passed to each handler.
+template <typename Context> class property_exchange_stream_function {
+public:
+  /// \brief The type of the function called at the start of each Property Exchange message.
+  using start_fn = std::function<void(Context, header const&, ci::property_exchange::stream_start const&)>;
+  /// \brief The type of the function called with each piece of a Property Exchange message's header data.
+  using header_data_fn = std::function<void(Context, header const&, std::span<char const>)>;
+  /// \brief The type of the function called with the chunk fields of a Property Exchange message.
+  using chunk_fn = std::function<void(Context, header const&, ci::property_exchange::stream_chunk const&)>;
+  /// \brief The type of the function called with each piece of a Property Exchange message's property data.
+  using property_data_fn = std::function<void(Context, header const&, std::span<std::byte const>)>;
+  /// \brief The type of the function called at the end of each Property Exchange message.
+  using end_fn = std::function<void(Context, header const&)>;
+  /// \brief The type of the function called when a Property Exchange message is abandoned.
+  using abort_fn = std::function<void(Context, header const&)>;
+
+  /// \brief Sets the function to be called at the start of each Property Exchange message.
+  /// \param start  The function to be called. An empty function causes these calls to be ignored.
+  /// \returns *this
+  constexpr property_exchange_stream_function& on_start(start_fn start) {
+    start_ = std::move(start);
+    return *this;
+  }
+  /// \brief Sets the function to be called with each piece of a Property Exchange message's header data.
+  /// \param header_data  The function to be called. An empty function causes these calls to be ignored.
+  /// \returns *this
+  constexpr property_exchange_stream_function& on_header_data(header_data_fn header_data) {
+    header_data_ = std::move(header_data);
+    return *this;
+  }
+  /// \brief Sets the function to be called with the chunk fields of a Property Exchange message.
+  /// \param chunk  The function to be called. An empty function causes these calls to be ignored.
+  /// \returns *this
+  constexpr property_exchange_stream_function& on_chunk(chunk_fn chunk) {
+    chunk_ = std::move(chunk);
+    return *this;
+  }
+  /// \brief Sets the function to be called with each piece of a Property Exchange message's property data.
+  /// \param property_data  The function to be called. An empty function causes these calls to be ignored.
+  /// \returns *this
+  constexpr property_exchange_stream_function& on_property_data(property_data_fn property_data) {
+    property_data_ = std::move(property_data);
+    return *this;
+  }
+  /// \brief Sets the function to be called at the end of each Property Exchange message.
+  /// \param end  The function to be called. An empty function causes these calls to be ignored.
+  /// \returns *this
+  constexpr property_exchange_stream_function& on_end(end_fn end) {
+    end_ = std::move(end);
+    return *this;
+  }
+  /// \brief Sets the function to be called when a Property Exchange message is abandoned.
+  /// \param abort  The function to be called. An empty function causes these calls to be ignored.
+  /// \returns *this
+  constexpr property_exchange_stream_function& on_abort(abort_fn abort) {
+    abort_ = std::move(abort);
+    return *this;
+  }
+
+  /// \brief Calls the function registered by on_start(), if any.
+  /// \param context  The context value to be passed to the function.
+  /// \param ci  The MIDI-CI header of the message.
+  /// \param start  The message's fixed fields.
+  void start(Context context, header const& ci, ci::property_exchange::stream_start const& start) const {
+    call(start_, context, ci, start);
+  }
+  /// \brief Calls the function registered by on_header_data(), if any.
+  /// \param context  The context value to be passed to the function.
+  /// \param ci  The MIDI-CI header of the message.
+  /// \param data  A piece of the message's header data.
+  void header_data(Context context, header const& ci, std::span<char const> const data) const {
+    call(header_data_, context, ci, data);
+  }
+  /// \brief Calls the function registered by on_chunk(), if any.
+  /// \param context  The context value to be passed to the function.
+  /// \param ci  The MIDI-CI header of the message.
+  /// \param chunk  The message's chunk fields.
+  void chunk(Context context, header const& ci, ci::property_exchange::stream_chunk const& chunk) const {
+    call(chunk_, context, ci, chunk);
+  }
+  /// \brief Calls the function registered by on_property_data(), if any.
+  /// \param context  The context value to be passed to the function.
+  /// \param ci  The MIDI-CI header of the message.
+  /// \param data  A piece of the message's property data.
+  void property_data(Context context, header const& ci, std::span<std::byte const> const data) const {
+    call(property_data_, context, ci, data);
+  }
+  /// \brief Calls the function registered by on_end(), if any.
+  /// \param context  The context value to be passed to the function.
+  /// \param ci  The MIDI-CI header of the message.
+  void end(Context context, header const& ci) const { call(end_, context, ci); }
+  /// \brief Calls the function registered by on_abort(), if any.
+  /// \param context  The context value to be passed to the function.
+  /// \param ci  The MIDI-CI header of the message.
+  void abort(Context context, header const& ci) const { call(abort_, context, ci); }
+
+private:
+  start_fn start_;
+  header_data_fn header_data_;
+  chunk_fn chunk_;
+  property_data_fn property_data_;
+  end_fn end_;
+  abort_fn abort_;
+};
+
+static_assert(property_exchange_stream<property_exchange_stream_function<int>, int>);
 
 /// \brief A \ref process_inquiry backend which forwards each MIDI-CI Process Inquiry message to a std::function<>.
 ///
