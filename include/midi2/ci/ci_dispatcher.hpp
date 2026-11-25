@@ -942,6 +942,7 @@ void ci_dispatcher<Config>::pe_stream_header_data() {
 #if defined(__cpp_lib_start_lifetime_as) && __cpp_lib_start_lifetime_as >= 202207L
   auto const piece = std::span{std::start_lifetime_as<char const>(buffer_.data()), pos_};
 #else
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   auto const piece = std::span{reinterpret_cast<char const*>(buffer_.data()), pos_};
 #endif
   stream_remaining_ = static_cast<std::uint16_t>(stream_remaining_ - pos_);
@@ -967,6 +968,7 @@ void ci_dispatcher<Config>::pe_stream_chunk() {
 #if defined(__cpp_lib_start_lifetime_as) && __cpp_lib_start_lifetime_as >= 202207L
   auto const* const pt2 = std::start_lifetime_as<property_exchange_pt2 const>(buffer_.data());
 #else
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   auto const* const pt2 = reinterpret_cast<property_exchange_pt2 const*>(buffer_.data());
 #endif
   auto const chunk =
