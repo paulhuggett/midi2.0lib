@@ -1407,7 +1407,7 @@ protected:
 
   // Sends a message and records the context, group, and device ID with which the handlers are called.
   void dispatch(dispatcher_type& dispatcher) {
-    dispatcher.config().system.on_check_muid([this](in_place_context c, std::uint8_t group, midi2::ci::muid) {
+    dispatcher.config().system.on_check_muid([this](in_place_context const &c, std::uint8_t group, midi2::ci::muid) {
       name_ = c.name();
       number_ = c.number();
       group_ = group;
