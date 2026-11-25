@@ -1070,7 +1070,7 @@ struct stream_recorder {
   void property_data(context_type&, header const& ci, std::span<std::byte const> const piece) {
     this->record("property_data", ci);
     std::ranges::transform(piece, std::back_inserter(data_text),
-                           [](std::byte const b) { return static_cast<char>(b); });
+                           [](std::byte const b) { return static_cast<char>(std::to_underlying(b)); });
     largest_piece = std::max(largest_piece, piece.size());
   }
   void end(context_type&, header const& ci) { this->record("end", ci); }
@@ -1338,7 +1338,7 @@ TEST(CIDispatcherFunctionStream, LargeMessage) {
           [&](empty, header const&, std::span<char const> piece) { header_text.append(piece.begin(), piece.end()); })
       .on_property_data([&](empty, header const&, std::span<std::byte const> piece) {
         std::ranges::transform(piece, std::back_inserter(data_text),
-                               [](std::byte const b) { return static_cast<char>(b); });
+                               [](std::byte const b) { return static_cast<char>(std::to_underlying(b)); });
       })
       .on_end([&](empty, header const&) { ended = true; });
   std::ranges::for_each(message, [&dispatcher](std::byte const b) { dispatcher.dispatch(b); });
