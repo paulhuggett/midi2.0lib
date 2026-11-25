@@ -36,12 +36,14 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <type_traits>
 #include <utility>
+#include <version>
 
 // Local includes
 #include "mcoded7_decoder.hpp"
@@ -233,8 +235,16 @@ private:
 /// \tparam T  The element type of the piece: either char or std::byte.
 /// \param s  The characters or bytes to be converted.
 /// \returns The characters or bytes of \p s as UTF-8 code units.
-template <typename T> std::u8string_view utf8(std::span<T const> const s) {
-  return std::u8string_view{reinterpret_cast<char8_t const*>(s.data()), s.size()};
+template <typename T>
+  requires(sizeof(T) == sizeof(char8_t))
+std::u8string_view utf8(std::span<T const> const s) {
+#if defined(__cpp_lib_start_lifetime_as) && __cpp_lib_start_lifetime_as >= 202207L
+  auto const* const ptr = std::start_lifetime_as<char8_t const>(s.data());
+#else
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  auto const* const ptr = reinterpret_cast<char8_t const*>(s.data());
+#endif
+  return std::u8string_view{ptr, s.size()};
 }
 
 /// A JSON parser which writes its input to the standard output and remembers the header's properties.
