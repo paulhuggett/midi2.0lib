@@ -4,13 +4,13 @@
 
 - Translators
   - To/From Bytestream
-    - midi2::bytestream::bytestream_to_ump
-    - midi2::bytestream::ump_to_bytestream
+    - midi2::bytestream::to_ump
+    - midi2::bytestream::to_bytestream
     - midi2::bytestream::usbm1_to_bytestream
 
   - UMP MIDI 1 <-> MIDI 2 conversion
     - midi2::ump::ump_to_midi2
-    - midi2::ump::ump_to_midi1
+    - midi2::ump::to_midi1
 
 - Dispatchers
   - midi2::ci::ci_dispatcher
@@ -34,13 +34,13 @@ different types of translation.
 The library provides five different translators. They are:
 
 - To and from MIDI 1.0 byte-streams
-  - MIDI 1.0 bytestream to UMP (\ref midi2::bytestream::bytestream_to_ump)
-  - UMP MIDI 1.0 to MIDI 1.0 bytestream (\ref midi2::bytestream::ump_to_bytestream)
+  - MIDI 1.0 bytestream to UMP (\ref midi2::bytestream::to_ump)
+  - UMP MIDI 1.0 to MIDI 1.0 bytestream (\ref midi2::bytestream::to_bytestream)
   - USB-MIDI Event Packets to MIDI 1.0 bytestream (\ref midi2::bytestream::usbm1_to_bytestream)
 
 - UMP MIDI 1 <-> MIDI 2 conversion
   - MIDI 1.0 UMP packets to MIDI 2.0 UMP (\ref midi2::ump::ump_to_midi2)
-  - MIDI 2.0 UMP packets to MIDI 1.0 UMP (\ref midi2::ump::ump_to_midi1)
+  - MIDI 2.0 UMP packets to MIDI 1.0 UMP (\ref midi2::ump::to_midi1)
 
 The translators provide a common interface with `push()`, `empty()`,
 `pop()`, and `reset()` methods. Some have additional member functions to
