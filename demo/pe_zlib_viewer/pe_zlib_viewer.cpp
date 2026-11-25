@@ -240,15 +240,15 @@ template <typename T> std::u8string_view utf8(std::span<T const> const s) {
 /// A JSON parser which writes its input to the standard output and remembers the header's properties.
 using json_parser = peejay::parser<header_writer>;
 /// The number of spaces by which each level of the displayed JSON is indented.
-constexpr auto indent = std::size_t{2};
+constexpr auto json_indent = std::size_t{2};
 /// Tells the parser to report ill-formed UTF-8 as an error rather than replace it with U+FFFD.
-constexpr auto stop_on_ill_formed = true;
+constexpr auto reject_ill_formed = true;
 
 /// The state shared by the MIDI-CI message handlers.
 struct context {
   /// The header is complete before any of the property data arrives, so one parser handles both: finish()
   /// prepares it for the next JSON document.
-  json_parser json{std::ostream_iterator<char>{std::cout}, indent};
+  json_parser json{std::ostream_iterator<char>{std::cout}, json_indent};
   /// Checks that the parser's input is well-formed UTF-8. A new instance is needed for each JSON document because it
   /// never forgets that it has seen ill-formed input.
   icubaby::t8_8 transcoder;
@@ -268,7 +268,7 @@ struct context {
 ///
 /// \param ctxt  The state shared by the message handlers.
 void reset_json(context& ctxt) {
-  ctxt.json.reset(std::ostream_iterator<char>{std::cout}, indent);
+  ctxt.json.reset(std::ostream_iterator<char>{std::cout}, json_indent);
   ctxt.transcoder = icubaby::t8_8{};
 }
 
@@ -279,7 +279,7 @@ void reset_json(context& ctxt) {
 /// \param ctxt  The state shared by the message handlers.
 /// \param piece  The piece of the JSON document.
 template <typename T> void parse(context& ctxt, std::span<T const> const piece) {
-  ctxt.json.input(ctxt.transcoder, utf8(piece), stop_on_ill_formed);
+  ctxt.json.input(ctxt.transcoder, utf8(piece), reject_ill_formed);
 }
 
 /// Completes a JSON parse, reporting any error, and prepares for the next JSON document.
@@ -287,7 +287,7 @@ template <typename T> void parse(context& ctxt, std::span<T const> const piece) 
 /// \param ctxt  The state shared by the message handlers.
 /// \returns True if the parse succeeded.
 bool finish(context& ctxt) {
-  ctxt.json.eof(ctxt.transcoder, stop_on_ill_formed);
+  ctxt.json.eof(ctxt.transcoder, reject_ill_formed);
   std::cout << '\n';  // The writer does not end the document with a newline.
   auto const err = ctxt.json.last_error();
   if (err) {

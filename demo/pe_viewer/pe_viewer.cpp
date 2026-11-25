@@ -80,13 +80,13 @@ template <typename T> std::u8string_view utf8(std::span<T const> const s) {
 /// A JSON parser which writes its input to the standard output.
 using json_parser = peejay::parser<peejay::writer<std::ostream_iterator<char>>>;
 /// The number of spaces by which each level of the displayed JSON is indented.
-constexpr auto indent = std::size_t{2};
+constexpr auto json_indent = std::size_t{2};
 
 /// Prepares a parser for a new JSON document, discarding anything that remains of the previous one.
 ///
 /// \param parser  The parser to be reset.
 void reset(json_parser& parser) {
-  parser.reset(std::ostream_iterator<char>{std::cout}, indent);
+  parser.reset(std::ostream_iterator<char>{std::cout}, json_indent);
 }
 
 /// Completes a JSON parse, reporting any error, and prepares for the next JSON document.
@@ -109,7 +109,7 @@ bool finish(json_parser& parser) {
 struct context {
   /// The header is complete before any of the property data arrives, so one parser handles both: finish()
   /// prepares it for the next JSON document.
-  json_parser json{std::ostream_iterator<char>{std::cout}, indent};
+  json_parser json{std::ostream_iterator<char>{std::cout}, json_indent};
   /// False once an error has been reported.
   bool ok = true;
 };
