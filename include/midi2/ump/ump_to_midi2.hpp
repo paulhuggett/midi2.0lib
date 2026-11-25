@@ -69,6 +69,19 @@ public:
   /// Any in-flight messages are lost.
   constexpr void reset() { context_.reset(); }
 
+  /// \brief Sends any RPN/NRPN value held for a group and channel.
+  ///
+  /// A MIDI 1.0 Data Entry MSB (CC 6) is held until a Data Entry LSB (CC 38), another Data Entry MSB, or a parameter
+  /// number controller (CC 98-101) shows that the RPN/NRPN is complete (M2-104 section D.3.3). Some MIDI 1.0 devices
+  /// never send the LSB, so the last value in a sequence may otherwise wait indefinitely. Call this function (for
+  /// example, after a short timeout) to send it. Nothing is sent if no value is held.
+  ///
+  /// As with push(), the output should be drained before calling this function. At most one message is produced.
+  ///
+  /// \param group  The UMP group (0-15).
+  /// \param channel  The channel (0-15).
+  void flush(std::uint8_t group, std::uint8_t channel);
+
 private:
   /// \brief The translator state which is shared with the message handlers.
   struct context {
@@ -135,7 +148,8 @@ private:
 
     /// Represents the status of registered (RPN) or non-registered/assignable (NRPN) parameters
     struct parameter_number {
-      bool pn_is_rpn = false;                 ///< Is this nrpn or rpn?
+      std::uint8_t pn_is_rpn : 1 = false;      ///< Is this nrpn or rpn?
+      std::uint8_t value_pending : 1 = false;  ///< True if a Data Entry MSB value is held but not yet sent.
       std::uint8_t pn_msb_valid : 1 = false;  ///< True if a parameter number MSB has been received.
       std::uint8_t pn_msb : 7 = 0;            ///< Set by nrpn_msb/rpn_msb
       std::uint8_t pn_lsb_valid : 1 = false;  ///< True if a parameter number LSB has been received.
@@ -160,6 +174,7 @@ private:
       }
       /// \brief Forgets the selected parameter number and any Data Entry MSB value received for it.
       constexpr void reset() noexcept {
+        value_pending = false;
         pn_msb_valid = false;
         pn_msb = 0;
         pn_lsb_valid = false;
@@ -167,14 +182,21 @@ private:
         value_msb_valid = false;
         value_msb = 0;
       }
-      /// \brief Records the Data Entry MSB value.
+      /// \brief Records the Data Entry MSB value. The value is held until the RPN/NRPN is complete.
       /// \param value  The 7-bit Data Entry MSB value.
       constexpr void set_value_msb(std::uint8_t const value) noexcept {
         assert(value < 0x80);
         value_msb = value;
         value_msb_valid = true;
+        value_pending = true;
+      }
+      /// \brief Returns true if a parameter number and Data Entry MSB value have been received.
+      /// \returns True if a parameter number and Data Entry MSB value have been received.
+      [[nodiscard]] constexpr bool is_complete() const noexcept {
+        return pn_msb_valid != 0U && pn_lsb_valid != 0U && value_msb_valid != 0U;
       }
     };
+    static_assert(sizeof(parameter_number) == 4);
 
     /// \brief The FIFO of translated 32-bit UMP words waiting to be consumed by pop().
     adt::fifo<std::uint32_t, 4> output;
@@ -313,6 +335,17 @@ private:
       /// \param ctxt  The translator context.
       /// \param in  The incoming message.
       static void pitch_bend(context* ctxt, ump::m1cvm::pitch_bend const& in);
+
+      /// \brief Sends the Data Entry MSB value held for an RPN/NRPN, if any, with an LSB of zero.
+      ///
+      /// The MIDI 1.0 Detailed Specification says that when the MSB of a controller is received, the receiver should
+      /// set its concept of the LSB to zero.
+      /// \param ctxt  The translator context.
+      /// \param c  The parameter number state for \p group and \p channel.
+      /// \param group  The UMP group.
+      /// \param channel  The channel.
+      static void flush_pending(struct context* ctxt, struct context::parameter_number& c, std::uint8_t group,
+                                std::uint8_t channel);
 
     private:
       template <typename T>
