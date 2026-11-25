@@ -768,7 +768,7 @@ using namespace std::string_view_literals;
 namespace {
 
 /// \returns The bytes of \p s, as used for Property Exchange property data.
-std::span<std::byte const> bytes(std::string_view const s) noexcept {
+[[nodiscard]] std::span<std::byte const> bytes(std::string_view const s) noexcept {
   return std::as_bytes(std::span{s});
 }
 
