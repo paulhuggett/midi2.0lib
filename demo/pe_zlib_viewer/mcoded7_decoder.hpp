@@ -41,7 +41,7 @@ public:
     if (!this->good()) {
       return false;
     }
-    std::array<std::byte, 32> out;
+    std::array<std::byte, 32> out{};
     while (!piece.empty()) {
       // The decoder produces at most one byte of output for each byte of input.
       auto const block = piece.first(std::min(piece.size(), out.size()));

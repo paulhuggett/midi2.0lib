@@ -77,14 +77,15 @@ public:
     if (done_) {
       return this->error("unexpected data after the compressed stream");
     }
-    // zlib does not modify its input but, by default, next_in is not a pointer to const. The cmake project defines
-    // ZLIB_CONST, so this should be fine.
+    // The cmake project defines ZLIB_CONST, so this shouldn't require a const-cast.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     z_.next_in = reinterpret_cast<Bytef const*>(piece.data());
     z_.avail_in = static_cast<uInt>(piece.size());
     // Run inflate() until it has consumed all of the input and has no more output to deliver: a full output buffer
     // means that there may be more to come.
-    std::array<std::byte, 64> out;
+    std::array<std::byte, 64> out{};
     do {
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
       z_.next_out = reinterpret_cast<Bytef*>(out.data());
       z_.avail_out = static_cast<uInt>(out.size());
       switch (inflate(&z_, Z_NO_FLUSH)) {
