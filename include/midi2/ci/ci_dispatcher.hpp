@@ -799,64 +799,64 @@ template <typename Config>
 void ci_dispatcher<Config>::property_exchange() {
   if constexpr (pe_stream) {
     this->pe_stream_start();
-    return;
-  }
-  using ci::property_exchange::packed::property_exchange_pt1;
-  using ci::property_exchange::packed::property_exchange_pt2;
-  auto size = offsetof(property_exchange_pt1, header);
-  auto const* const pt1 = reinterpret_cast<property_exchange_pt1 const*>(buffer_.data());
-  auto const header_length = details::from_le7(pt1->header_length).get();
-  if (pos_ == size && header_length > 0) {
-    count_ = header_length * sizeof(pt1->header[0]);
-    return;
-  }
-  size += header_length;
-  constexpr auto pt2_size = offsetof(property_exchange_pt2, data);
-  if (pos_ == size) {
-    count_ = pt2_size;
-    return;
-  }
+  } else {
+    using ci::property_exchange::packed::property_exchange_pt1;
+    using ci::property_exchange::packed::property_exchange_pt2;
+    auto size = offsetof(property_exchange_pt1, header);
+    auto const* const pt1 = reinterpret_cast<property_exchange_pt1 const*>(buffer_.data());
+    auto const header_length = details::from_le7(pt1->header_length).get();
+    if (pos_ == size && header_length > 0) {
+      count_ = header_length * sizeof(pt1->header[0]);
+      return;
+    }
+    size += header_length;
+    constexpr auto pt2_size = offsetof(property_exchange_pt2, data);
+    if (pos_ == size) {
+      count_ = pt2_size;
+      return;
+    }
 
-  auto const* const pt2 = reinterpret_cast<property_exchange_pt2 const*>(buffer_.data() + size);
-  size += pt2_size;
-  auto const data_length = details::from_le7(pt2->data_length).get();
-  if (pos_ == size && data_length > 0) {
-    count_ = data_length * sizeof(pt2->data[0]);
-    return;
+    auto const* const pt2 = reinterpret_cast<property_exchange_pt2 const*>(buffer_.data() + size);
+    size += pt2_size;
+    auto const data_length = details::from_le7(pt2->data_length).get();
+    if (pos_ == size && data_length > 0) {
+      count_ = data_length * sizeof(pt2->data[0]);
+      return;
+    }
+
+    using chunk_info = ci::property_exchange::chunk_info;
+
+    auto const chunk = chunk_info{.number_of_chunks = details::from_le7(pt2->number_of_chunks),
+                                  .chunk_number = details::from_le7(pt2->chunk_number)};
+    auto const request = b7{to_underlying(pt1->request_id)};
+    auto const header = std::span{&pt1->header[0], header_length};
+    auto const data = std::span{&pt2->data[0], data_length};
+
+    auto& c = this->config();
+    using enum message;
+    using ci::property_exchange::get;
+    using ci::property_exchange::get_reply;
+    using ci::property_exchange::notify;
+    using ci::property_exchange::set;
+    using ci::property_exchange::set_reply;
+    using ci::property_exchange::subscription;
+    using ci::property_exchange::subscription_reply;
+
+    auto& pe = c.property_exchange;
+    switch (type_) {
+    case pe_get: pe.get(c.context, header_, get::make(chunk, request, header)); break;
+    case pe_get_reply: pe.get_reply(c.context, header_, get_reply::make(chunk, request, header, data)); break;
+    case pe_set: pe.set(c.context, header_, set::make(chunk, request, header, data)); break;
+    case pe_set_reply: pe.set_reply(c.context, header_, set_reply::make(chunk, request, header, data)); break;
+    case pe_sub: pe.subscription(c.context, header_, subscription::make(chunk, request, header, data)); break;
+    case pe_sub_reply:
+      pe.subscription_reply(c.context, header_, subscription_reply::make(chunk, request, header, data));
+      break;
+    case pe_notify: pe.notify(c.context, header_, notify::make(chunk, request, header, data)); break;
+    default: assert(false); break;
+    }
+    consumer_ = &ci_dispatcher::discard;
   }
-
-  using chunk_info = ci::property_exchange::chunk_info;
-
-  auto const chunk = chunk_info{.number_of_chunks = details::from_le7(pt2->number_of_chunks),
-                                .chunk_number = details::from_le7(pt2->chunk_number)};
-  auto const request = b7{to_underlying(pt1->request_id)};
-  auto const header = std::span{&pt1->header[0], header_length};
-  auto const data = std::span{&pt2->data[0], data_length};
-
-  auto& c = this->config();
-  using enum message;
-  using ci::property_exchange::get;
-  using ci::property_exchange::get_reply;
-  using ci::property_exchange::notify;
-  using ci::property_exchange::set;
-  using ci::property_exchange::set_reply;
-  using ci::property_exchange::subscription;
-  using ci::property_exchange::subscription_reply;
-
-  auto& pe = c.property_exchange;
-  switch (type_) {
-  case pe_get: pe.get(c.context, header_, get::make(chunk, request, header)); break;
-  case pe_get_reply: pe.get_reply(c.context, header_, get_reply::make(chunk, request, header, data)); break;
-  case pe_set: pe.set(c.context, header_, set::make(chunk, request, header, data)); break;
-  case pe_set_reply: pe.set_reply(c.context, header_, set_reply::make(chunk, request, header, data)); break;
-  case pe_sub: pe.subscription(c.context, header_, subscription::make(chunk, request, header, data)); break;
-  case pe_sub_reply:
-    pe.subscription_reply(c.context, header_, subscription_reply::make(chunk, request, header, data));
-    break;
-  case pe_notify: pe.notify(c.context, header_, notify::make(chunk, request, header, data)); break;
-  default: assert(false); break;
-  }
-  consumer_ = &ci_dispatcher::discard;
 }
 
 // pe type
