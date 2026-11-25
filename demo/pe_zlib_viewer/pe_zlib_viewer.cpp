@@ -166,12 +166,13 @@ public:
   /// \param s  The string.
   /// \returns The error code from the writer.
   std::error_code string_value(std::u8string_view const& s) {
+    using enum property;
     switch (property_) {
-    case property::mutual_encoding: encoding_ = to_encoding(s); break;
-    case property::media_type: json_ = is_json(s); break;
-    case property::other: break;
+    case mutual_encoding: encoding_ = to_encoding(s); break;
+    case media_type: json_ = is_json(s); break;
+    case other: break;
     }
-    property_ = property::other;
+    property_ = other;
     return writer::string_value(s);
   }
 
