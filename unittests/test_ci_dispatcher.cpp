@@ -1334,13 +1334,14 @@ TEST(CIDispatcherFunctionStream, LargeMessage) {
     FAIL() << "unexpected buffer overflow";
   });
   config.property_exchange_stream
-      .on_header_data(
-          [&](empty, header const&, std::span<char const> piece) { header_text.append(piece.begin(), piece.end()); })
-      .on_property_data([&](empty, header const&, std::span<std::byte const> piece) {
+      .on_header_data([&header_text](empty, header const&, std::span<char const> piece) {
+        header_text.append(piece.begin(), piece.end());
+      })
+      .on_property_data([&data_text](empty, header const&, std::span<std::byte const> piece) {
         std::ranges::transform(piece, std::back_inserter(data_text),
                                [](std::byte const b) { return static_cast<char>(std::to_underlying(b)); });
       })
-      .on_end([&](empty, header const&) { ended = true; });
+      .on_end([&ended](empty, header const&) { ended = true; });
   std::ranges::for_each(message, [&dispatcher](std::byte const b) { dispatcher.dispatch(b); });
 
   EXPECT_EQ(header_text, header_json);
