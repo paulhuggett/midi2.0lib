@@ -21,10 +21,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <span>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <version>
 
 #include "midi2/ci/ci_dispatcher_backend.hpp"
 #include "midi2/ci/ci_types.hpp"
@@ -937,7 +939,11 @@ template <typename Config>
 void ci_dispatcher<Config>::pe_stream_header_data() {
   using ci::property_exchange::packed::property_exchange_pt2;
   assert(pos_ > 0 && pos_ <= stream_remaining_);
+#if defined(__cpp_lib_start_lifetime_as) && __cpp_lib_start_lifetime_as >= 202207L
+  auto const piece = std::span{std::start_lifetime_as<char const>(buffer_.data()), pos_};
+#else
   auto const piece = std::span{reinterpret_cast<char const*>(buffer_.data()), pos_};
+#endif
   stream_remaining_ = static_cast<std::uint16_t>(stream_remaining_ - pos_);
   if (stream_remaining_ > 0) {
     this->stream_next_piece();
@@ -958,7 +964,11 @@ void ci_dispatcher<Config>::pe_stream_chunk() {
   using ci::property_exchange::packed::property_exchange_pt2;
   assert(pos_ == offsetof(property_exchange_pt2, data));
 
+#if defined(__cpp_lib_start_lifetime_as) && __cpp_lib_start_lifetime_as >= 202207L
+  auto const* const pt2 = std::start_lifetime_as<property_exchange_pt2 const>(buffer_.data());
+#else
   auto const* const pt2 = reinterpret_cast<property_exchange_pt2 const*>(buffer_.data());
+#endif
   auto const chunk =
       ci::property_exchange::stream_chunk{.chunk = {.number_of_chunks = details::from_le7(pt2->number_of_chunks),
                                                     .chunk_number = details::from_le7(pt2->chunk_number)},
