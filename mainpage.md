@@ -110,6 +110,12 @@ in the larger system or an instance owned by the configuration object itself.
 If not needed by the handlers, it can be an empty struct declared with
 `[[no_unique_address]]` so that it takes no space.
 
+The context is passed by reference, so its type need not be copyable and a
+change made to it by one handler is seen by those called later. A context which
+can be neither copied nor moved can be constructed in place by passing
+`std::in_place`, followed by the arguments for its constructor, to the
+dispatcher's constructor.
+
 ### Predefined message handlers
 
 1. Null

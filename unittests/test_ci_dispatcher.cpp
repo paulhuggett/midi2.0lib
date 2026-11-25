@@ -22,11 +22,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <ostream>
 #include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 // google mock/test/fuzz
@@ -135,74 +138,74 @@ struct context_type {
 
 class mock_system_callbacks : public midi2::ci::dispatcher_backend::system_pure<context_type> {
 public:
-  MOCK_METHOD(bool, check_muid, (context_type, std::uint8_t group, midi2::ci::muid muid), (override));
-  MOCK_METHOD(void, buffer_overflow, (context_type), (override));
-  MOCK_METHOD(void, unknown_midici, (context_type, header const&), (override));
+  MOCK_METHOD(bool, check_muid, (context_type&, std::uint8_t group, midi2::ci::muid muid), (override));
+  MOCK_METHOD(void, buffer_overflow, (context_type&), (override));
+  MOCK_METHOD(void, unknown_midici, (context_type&, header const&), (override));
 };
 
 class mock_management_callbacks : public midi2::ci::dispatcher_backend::management_pure<context_type> {
 public:
-  MOCK_METHOD(void, discovery, (context_type, header const&, midi2::ci::discovery const&), (override));
-  MOCK_METHOD(void, discovery_reply, (context_type, header const&, midi2::ci::discovery_reply const&), (override));
-  MOCK_METHOD(void, endpoint, (context_type, header const&, midi2::ci::endpoint const&), (override));
-  MOCK_METHOD(void, endpoint_reply, (context_type, header const&, midi2::ci::endpoint_reply const&), (override));
-  MOCK_METHOD(void, invalidate_muid, (context_type, header const&, midi2::ci::invalidate_muid const&), (override));
-  MOCK_METHOD(void, ack, (context_type, header const&, midi2::ci::ack const&), (override));
-  MOCK_METHOD(void, nak, (context_type, header const&, midi2::ci::nak const&), (override));
+  MOCK_METHOD(void, discovery, (context_type&, header const&, midi2::ci::discovery const&), (override));
+  MOCK_METHOD(void, discovery_reply, (context_type&, header const&, midi2::ci::discovery_reply const&), (override));
+  MOCK_METHOD(void, endpoint, (context_type&, header const&, midi2::ci::endpoint const&), (override));
+  MOCK_METHOD(void, endpoint_reply, (context_type&, header const&, midi2::ci::endpoint_reply const&), (override));
+  MOCK_METHOD(void, invalidate_muid, (context_type&, header const&, midi2::ci::invalidate_muid const&), (override));
+  MOCK_METHOD(void, ack, (context_type&, header const&, midi2::ci::ack const&), (override));
+  MOCK_METHOD(void, nak, (context_type&, header const&, midi2::ci::nak const&), (override));
 };
 
 class mock_profile_callbacks : public midi2::ci::dispatcher_backend::profile_pure<context_type> {
 public:
-  MOCK_METHOD(void, inquiry, (context_type, header const&), (override));
+  MOCK_METHOD(void, inquiry, (context_type&, header const&), (override));
   MOCK_METHOD(void, inquiry_reply,
-              (context_type, header const&, midi2::ci::profile_configuration::inquiry_reply const&), (override));
-  MOCK_METHOD(void, added, (context_type, header const&, midi2::ci::profile_configuration::added const&), (override));
-  MOCK_METHOD(void, removed, (context_type, header const&, midi2::ci::profile_configuration::removed const&),
+              (context_type&, header const&, midi2::ci::profile_configuration::inquiry_reply const&), (override));
+  MOCK_METHOD(void, added, (context_type&, header const&, midi2::ci::profile_configuration::added const&), (override));
+  MOCK_METHOD(void, removed, (context_type&, header const&, midi2::ci::profile_configuration::removed const&),
               (override));
-  MOCK_METHOD(void, details, (context_type, header const&, midi2::ci::profile_configuration::details const&),
+  MOCK_METHOD(void, details, (context_type&, header const&, midi2::ci::profile_configuration::details const&),
               (override));
   MOCK_METHOD(void, details_reply,
-              (context_type, header const&, midi2::ci::profile_configuration::details_reply const&), (override));
-  MOCK_METHOD(void, on, (context_type, header const&, midi2::ci::profile_configuration::on const&), (override));
-  MOCK_METHOD(void, off, (context_type, header const&, midi2::ci::profile_configuration::off const&), (override));
-  MOCK_METHOD(void, enabled, (context_type, header const&, midi2::ci::profile_configuration::enabled const&),
+              (context_type&, header const&, midi2::ci::profile_configuration::details_reply const&), (override));
+  MOCK_METHOD(void, on, (context_type&, header const&, midi2::ci::profile_configuration::on const&), (override));
+  MOCK_METHOD(void, off, (context_type&, header const&, midi2::ci::profile_configuration::off const&), (override));
+  MOCK_METHOD(void, enabled, (context_type&, header const&, midi2::ci::profile_configuration::enabled const&),
               (override));
-  MOCK_METHOD(void, disabled, (context_type, header const&, midi2::ci::profile_configuration::disabled const&),
+  MOCK_METHOD(void, disabled, (context_type&, header const&, midi2::ci::profile_configuration::disabled const&),
               (override));
   MOCK_METHOD(void, specific_data,
-              (context_type, header const&, midi2::ci::profile_configuration::specific_data const&), (override));
+              (context_type&, header const&, midi2::ci::profile_configuration::specific_data const&), (override));
 };
 
 class mock_property_exchange_callbacks : public midi2::ci::dispatcher_backend::property_exchange_pure<context_type> {
 public:
-  MOCK_METHOD(void, capabilities, (context_type, header const&, midi2::ci::property_exchange::capabilities const&),
+  MOCK_METHOD(void, capabilities, (context_type&, header const&, midi2::ci::property_exchange::capabilities const&),
               (override));
   MOCK_METHOD(void, capabilities_reply,
-              (context_type, header const&, midi2::ci::property_exchange::capabilities_reply const&), (override));
+              (context_type&, header const&, midi2::ci::property_exchange::capabilities_reply const&), (override));
 
-  MOCK_METHOD(void, get, (context_type, header const&, midi2::ci::property_exchange::get const&), (override));
-  MOCK_METHOD(void, get_reply, (context_type, header const&, midi2::ci::property_exchange::get_reply const&),
+  MOCK_METHOD(void, get, (context_type&, header const&, midi2::ci::property_exchange::get const&), (override));
+  MOCK_METHOD(void, get_reply, (context_type&, header const&, midi2::ci::property_exchange::get_reply const&),
               (override));
-  MOCK_METHOD(void, set, (context_type, header const&, midi2::ci::property_exchange::set const&), (override));
-  MOCK_METHOD(void, set_reply, (context_type, header const&, midi2::ci::property_exchange::set_reply const&),
+  MOCK_METHOD(void, set, (context_type&, header const&, midi2::ci::property_exchange::set const&), (override));
+  MOCK_METHOD(void, set_reply, (context_type&, header const&, midi2::ci::property_exchange::set_reply const&),
               (override));
-  MOCK_METHOD(void, subscription, (context_type, header const&, midi2::ci::property_exchange::subscription const&),
+  MOCK_METHOD(void, subscription, (context_type&, header const&, midi2::ci::property_exchange::subscription const&),
               (override));
   MOCK_METHOD(void, subscription_reply,
-              (context_type, header const&, midi2::ci::property_exchange::subscription_reply const&), (override));
-  MOCK_METHOD(void, notify, (context_type, header const&, midi2::ci::property_exchange::notify const&), (override));
+              (context_type&, header const&, midi2::ci::property_exchange::subscription_reply const&), (override));
+  MOCK_METHOD(void, notify, (context_type&, header const&, midi2::ci::property_exchange::notify const&), (override));
 };
 
 class mock_process_inquiry_callbacks : public midi2::ci::dispatcher_backend::process_inquiry_pure<context_type> {
 public:
-  MOCK_METHOD(void, capabilities, (context_type, header const&), (override));
+  MOCK_METHOD(void, capabilities, (context_type&, header const&), (override));
   MOCK_METHOD(void, capabilities_reply,
-              (context_type, header const&, midi2::ci::process_inquiry::capabilities_reply const&), (override));
+              (context_type&, header const&, midi2::ci::process_inquiry::capabilities_reply const&), (override));
   MOCK_METHOD(void, midi_message_report,
-              (context_type, header const&, midi2::ci::process_inquiry::midi_message_report const&), (override));
+              (context_type&, header const&, midi2::ci::process_inquiry::midi_message_report const&), (override));
   MOCK_METHOD(void, midi_message_report_reply,
-              (context_type, header const&, midi2::ci::process_inquiry::midi_message_report_reply const&), (override));
-  MOCK_METHOD(void, midi_message_report_end, (context_type, header const&), (override));
+              (context_type&, header const&, midi2::ci::process_inquiry::midi_message_report_reply const&), (override));
+  MOCK_METHOD(void, midi_message_report_end, (context_type&, header const&), (override));
 };
 
 constexpr auto broadcast_muid = midi2::ci::broadcast_muid;
@@ -1051,27 +1054,27 @@ struct stream_recorder {
   std::string data_text;
   std::size_t largest_piece = 0;
 
-  void start(context_type, header const& ci, midi2::ci::property_exchange::stream_start const& s) {
+  void start(context_type&, header const& ci, midi2::ci::property_exchange::stream_start const& s) {
     this->record("start", ci);
     start_fields = s;
   }
-  void header_data(context_type, header const& ci, std::span<char const> const piece) {
+  void header_data(context_type&, header const& ci, std::span<char const> const piece) {
     this->record("header_data", ci);
     header_text.append(piece.begin(), piece.end());
     largest_piece = std::max(largest_piece, piece.size());
   }
-  void chunk(context_type, header const& ci, midi2::ci::property_exchange::stream_chunk const& c) {
+  void chunk(context_type&, header const& ci, midi2::ci::property_exchange::stream_chunk const& c) {
     this->record("chunk", ci);
     chunk_fields = c;
   }
-  void property_data(context_type, header const& ci, std::span<std::byte const> const piece) {
+  void property_data(context_type&, header const& ci, std::span<std::byte const> const piece) {
     this->record("property_data", ci);
     std::ranges::transform(piece, std::back_inserter(data_text),
                            [](std::byte const b) { return static_cast<char>(b); });
     largest_piece = std::max(largest_piece, piece.size());
   }
-  void end(context_type, header const& ci) { this->record("end", ci); }
-  void abort(context_type, header const& ci) { this->record("abort", ci); }
+  void end(context_type&, header const& ci) { this->record("end", ci); }
+  void abort(context_type&, header const& ci) { this->record("abort", ci); }
 
   void clear() { *this = stream_recorder{}; }
   [[nodiscard]] std::string last_event() const { return events.empty() ? std::string{} : events.back(); }
@@ -1367,6 +1370,224 @@ TEST(CIDispatcherFunctionStream, BufferedConfigOverflows) {
 
   EXPECT_EQ(overflows, 1);
   EXPECT_EQ(replies, 0);
+}
+
+// A context type with a constructor that takes several arguments. It counts the copies and moves that were needed to
+// produce an instance.
+class in_place_context {
+public:
+  in_place_context(std::string name, std::unique_ptr<int> number) : name_{std::move(name)}, number_{*number} {}
+  in_place_context(in_place_context const& other)
+      : name_{other.name_}, number_{other.number_}, transfers_{other.transfers_ + 1} {}
+  in_place_context(in_place_context&& other) noexcept
+      : name_{std::move(other.name_)}, number_{other.number_}, transfers_{other.transfers_ + 1} {}
+  ~in_place_context() noexcept = default;
+  in_place_context& operator=(in_place_context const&) = delete;
+  in_place_context& operator=(in_place_context&&) noexcept = delete;
+
+  [[nodiscard]] std::string const& name() const noexcept { return name_; }
+  [[nodiscard]] int number() const noexcept { return number_; }
+  [[nodiscard]] int transfers() const noexcept { return transfers_; }
+
+private:
+  std::string name_;
+  int number_ = 0;
+  int transfers_ = 0;
+};
+
+template <typename Config> class CIDispatcherInPlace : public testing::Test {
+protected:
+  using dispatcher_type = midi2::ci::ci_dispatcher<Config>;
+
+  // Results recorded by the message handlers.
+  std::string name_;
+  int number_ = 0;
+  std::uint8_t group_ = 0xFF_u8;
+  midi2::ci::b7 device_id_ = 0x7F_b7;
+
+  // Sends a message and records the context, group, and device ID with which the handlers are called.
+  void dispatch(dispatcher_type& dispatcher) {
+    dispatcher.config().system.on_check_muid([this](in_place_context c, std::uint8_t group, midi2::ci::muid) {
+      name_ = c.name();
+      number_ = c.number();
+      group_ = group;
+      return true;
+    });
+    dispatcher.config().process_inquiry.on_capabilities(
+        [this](in_place_context const&, header const& hdr) { device_id_ = hdr.device_id; });
+    std::vector<std::byte> message;
+    midi2::ci::create_message(std::back_inserter(message), midi2::ci::trivial_sentinel{},
+                              header{.device_id = 0_b7, .version = 2_b7, .remote_muid = 1_b28, .local_muid = 2_b28},
+                              midi2::ci::process_inquiry::capabilities{});
+    message.push_back(0_b);  // a stray extra byte
+    std::ranges::for_each(message, [&dispatcher](std::byte const b) { dispatcher.dispatch(b); });
+  }
+};
+
+using in_place_configs = testing::Types<midi2::ci::function_config<in_place_context, 32>,
+                                        midi2::ci::function_stream_config<in_place_context, 32>>;
+TYPED_TEST_SUITE(CIDispatcherInPlace, in_place_configs, );
+
+// NOLINTNEXTLINE
+TYPED_TEST(CIDispatcherInPlace, ContextArguments) {
+  // The unique_ptr<> argument can only be moved, so this also checks that the arguments are perfectly forwarded.
+  typename TestFixture::dispatcher_type dispatcher{std::in_place, "name", std::make_unique<int>(42)};
+  EXPECT_EQ(dispatcher.config().context.transfers(), 0) << "The context should have been constructed in place";
+
+  this->dispatch(dispatcher);
+  EXPECT_EQ(this->name_, "name");
+  EXPECT_EQ(this->number_, 42);
+  EXPECT_EQ(this->group_, 0_u8);
+  EXPECT_EQ(this->device_id_, 0_b7);
+}
+// NOLINTNEXTLINE
+TYPED_TEST(CIDispatcherInPlace, DeviceIdGroupAndContextArguments) {
+  typename TestFixture::dispatcher_type dispatcher{0x12_b7, 3_u8, std::in_place, "name", std::make_unique<int>(42)};
+  EXPECT_EQ(dispatcher.config().context.transfers(), 0) << "The context should have been constructed in place";
+
+  this->dispatch(dispatcher);
+  EXPECT_EQ(this->name_, "name");
+  EXPECT_EQ(this->number_, 42);
+  EXPECT_EQ(this->group_, 3_u8);
+  EXPECT_EQ(this->device_id_, 0x12_b7);
+}
+// NOLINTNEXTLINE
+TYPED_TEST(CIDispatcherInPlace, Constraints) {
+  using dispatcher_type = typename TestFixture::dispatcher_type;
+  using midi2::ci::b7;
+  using number = std::unique_ptr<int>;
+  static_assert(std::is_constructible_v<dispatcher_type, std::in_place_t, char const*, number>);
+  static_assert(std::is_constructible_v<dispatcher_type, b7, std::uint8_t, std::in_place_t, char const*, number>);
+  // The arguments must be accepted by the context's constructor.
+  static_assert(!std::is_constructible_v<dispatcher_type, std::in_place_t>);
+  static_assert(!std::is_constructible_v<dispatcher_type, std::in_place_t, char const*>);
+  static_assert(!std::is_constructible_v<dispatcher_type, std::in_place_t, char const*, number&>);
+  static_assert(!std::is_constructible_v<dispatcher_type, b7, std::uint8_t, std::in_place_t>);
+  // The tag is required.
+  static_assert(!std::is_constructible_v<dispatcher_type, char const*, number>);
+  static_assert(!std::is_constructible_v<dispatcher_type, b7, std::uint8_t, char const*, number>);
+  // A reference to a configuration has no context to be constructed.
+  static_assert(!std::is_constructible_v<midi2::ci::ci_dispatcher<std::reference_wrapper<TypeParam>>, std::in_place_t,
+                                         char const*, number>);
+}
+// NOLINTNEXTLINE
+TEST(CIDispatcherInPlaceContext, NoArguments) {
+  using config = midi2::ci::function_config<int, 32>;
+  midi2::ci::ci_dispatcher<config> const a{std::in_place};
+  EXPECT_EQ(a.config().context, 0);
+  midi2::ci::ci_dispatcher<config> const b{0x12_b7, 3_u8, std::in_place};
+  EXPECT_EQ(b.config().context, 0);
+}
+// NOLINTNEXTLINE
+TEST(CIDispatcherInPlaceContext, Aggregate) {
+  struct aggregate {
+    int a;
+    int b;
+  };
+  // This is only a compile-time check because clang's -Wc++20-extensions warns about the parenthesized initialization
+  // of an aggregate (even when compiling as C++20 or later).
+  using dispatcher_type = midi2::ci::ci_dispatcher<midi2::ci::function_config<aggregate, 32>>;
+  static_assert(std::is_constructible_v<dispatcher_type, std::in_place_t, int, int>);
+}
+// NOLINTNEXTLINE
+TEST(CIDispatcherInPlaceContext, ReferenceWrapper) {
+  auto context = std::string{"name"};
+  using config = midi2::ci::function_stream_config<std::reference_wrapper<std::string>, 32>;
+  midi2::ci::ci_dispatcher<config> const dispatcher{std::in_place, context};
+  EXPECT_EQ(&dispatcher.config().context.get(), &context);
+}
+
+// A context type which can be neither copied nor moved.
+struct pinned_context {
+  pinned_context() noexcept = default;
+  pinned_context(pinned_context const&) = delete;
+  pinned_context(pinned_context&&) noexcept = delete;
+  ~pinned_context() noexcept = default;
+  pinned_context& operator=(pinned_context const&) = delete;
+  pinned_context& operator=(pinned_context&&) noexcept = delete;
+
+  int calls = 0;
+};
+
+namespace backend = midi2::ci::dispatcher_backend;
+static_assert(backend::system<backend::system_null<pinned_context>, pinned_context>);
+static_assert(backend::system<backend::system_pure<pinned_context>, pinned_context>);
+static_assert(backend::system<backend::system_base<pinned_context>, pinned_context>);
+static_assert(backend::system<backend::system_function<pinned_context>, pinned_context>);
+static_assert(backend::management<backend::management_null<pinned_context>, pinned_context>);
+static_assert(backend::management<backend::management_pure<pinned_context>, pinned_context>);
+static_assert(backend::management<backend::management_base<pinned_context>, pinned_context>);
+static_assert(backend::management<backend::management_function<pinned_context>, pinned_context>);
+static_assert(backend::profile<backend::profile_null<pinned_context>, pinned_context>);
+static_assert(backend::profile<backend::profile_pure<pinned_context>, pinned_context>);
+static_assert(backend::profile<backend::profile_base<pinned_context>, pinned_context>);
+static_assert(backend::profile<backend::profile_function<pinned_context>, pinned_context>);
+static_assert(backend::property_exchange<backend::property_exchange_null<pinned_context>, pinned_context>);
+static_assert(backend::property_exchange<backend::property_exchange_pure<pinned_context>, pinned_context>);
+static_assert(backend::property_exchange<backend::property_exchange_base<pinned_context>, pinned_context>);
+static_assert(backend::property_exchange<backend::property_exchange_function<pinned_context>, pinned_context>);
+static_assert(
+    backend::property_exchange_stream<backend::property_exchange_stream_null<pinned_context>, pinned_context>);
+static_assert(
+    backend::property_exchange_stream<backend::property_exchange_stream_pure<pinned_context>, pinned_context>);
+static_assert(
+    backend::property_exchange_stream<backend::property_exchange_stream_base<pinned_context>, pinned_context>);
+static_assert(
+    backend::property_exchange_stream<backend::property_exchange_stream_function<pinned_context>, pinned_context>);
+static_assert(backend::process_inquiry<backend::process_inquiry_null<pinned_context>, pinned_context>);
+static_assert(backend::process_inquiry<backend::process_inquiry_pure<pinned_context>, pinned_context>);
+static_assert(backend::process_inquiry<backend::process_inquiry_base<pinned_context>, pinned_context>);
+static_assert(backend::process_inquiry<backend::process_inquiry_function<pinned_context>, pinned_context>);
+
+// The handlers are passed a reference to the context so it cannot be const unless they accept a const reference.
+static_assert(midi2::ci::ci_dispatcher_config<midi2::ci::function_config<int, 32>&>);
+static_assert(!midi2::ci::ci_dispatcher_config<midi2::ci::function_config<int, 32> const&>);
+static_assert(midi2::ci::ci_dispatcher_config<midi2::ci::function_config<int const, 32> const&>);
+
+template <typename Config> class CIDispatcherPinnedContext : public testing::Test {};
+using pinned_configs = testing::Types<midi2::ci::function_config<pinned_context, 32>,
+                                      midi2::ci::function_stream_config<pinned_context, 32>>;
+TYPED_TEST_SUITE(CIDispatcherPinnedContext, pinned_configs, );
+
+// NOLINTNEXTLINE
+TYPED_TEST(CIDispatcherPinnedContext, HandlersReceiveAReference) {
+  midi2::ci::ci_dispatcher<TypeParam> dispatcher{std::in_place};
+  auto& config = dispatcher.config();
+  pinned_context const* check_muid_context = nullptr;
+  pinned_context const* capabilities_context = nullptr;
+  config.system.on_check_muid([&check_muid_context](pinned_context& c, std::uint8_t, midi2::ci::muid) {
+    ++c.calls;
+    check_muid_context = &c;
+    return true;
+  });
+  config.process_inquiry.on_capabilities([&capabilities_context](pinned_context& c, header const&) {
+    ++c.calls;
+    capabilities_context = &c;
+  });
+
+  std::vector<std::byte> message;
+  midi2::ci::create_message(std::back_inserter(message), midi2::ci::trivial_sentinel{},
+                            header{.device_id = 0_b7, .version = 2_b7, .remote_muid = 1_b28, .local_muid = 2_b28},
+                            midi2::ci::process_inquiry::capabilities{});
+  std::ranges::for_each(message, [&dispatcher](std::byte const b) { dispatcher.dispatch(b); });
+
+  EXPECT_EQ(check_muid_context, &config.context);
+  EXPECT_EQ(capabilities_context, &config.context);
+  EXPECT_EQ(config.context.calls, 2);
+}
+// NOLINTNEXTLINE
+TEST(CIDispatcherContext, MoveOnly) {
+  using context = std::unique_ptr<int>;
+  auto dispatcher = midi2::ci::make_function_dispatcher<context, 32>(0_b7, 0_u8, std::make_unique<int>(42));
+  auto& config = dispatcher.config();
+  ASSERT_NE(config.context, nullptr);
+  EXPECT_EQ(*config.context, 42);
+  config.system.on_check_muid([](context& c, std::uint8_t, midi2::ci::muid) {
+    ++*c;
+    return false;
+  });
+  EXPECT_FALSE(config.system.check_muid(config.context, 0_u8, midi2::ci::muid{}));
+  EXPECT_EQ(*config.context, 43);
 }
 
 // This test simply gets ci_dispatcher to consume a random buffer.

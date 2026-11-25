@@ -35,9 +35,13 @@ namespace midi2::ci {
 /// \brief Satisfied by types which can be used to configure a ci_dispatcher.
 ///
 /// The type must have a constant buffer_size member (the size of the buffer used to hold message bodies) which is at
-/// least the size of a MIDI-CI message header, a context member (whose value is passed to each of the message
+/// least the size of a MIDI-CI message header, a context member (which is passed by reference to each of the message
 /// handlers), and members named system, management, profile, property_exchange, and process_inquiry which satisfy the
 /// corresponding dispatcher_backend concepts.
+///
+/// The context is passed to the handlers as an lvalue and with any const qualification that the configuration has. This
+/// is why the concept uses decltype((v.context)): decltype(v.context) would be the type with which the member was
+/// declared, so would accept a const configuration whose handlers take a reference to a non-const context.
 ///
 /// The type may also have a property_exchange_stream member. See ci_dispatcher_stream_config.
 template <typename T>
@@ -45,11 +49,11 @@ concept ci_dispatcher_config = requires(T v) {
   { v.buffer_size } -> std::convertible_to<std::size_t>;
   requires std::remove_cvref_t<T>::buffer_size >= sizeof(packed::header);
   { v.context };
-  { v.system } -> dispatcher_backend::system<decltype(v.context)>;
-  { v.management } -> dispatcher_backend::management<decltype(v.context)>;
-  { v.profile } -> dispatcher_backend::profile<decltype(v.context)>;
-  { v.property_exchange } -> dispatcher_backend::property_exchange<decltype(v.context)>;
-  { v.process_inquiry } -> dispatcher_backend::process_inquiry<decltype(v.context)>;
+  { v.system } -> dispatcher_backend::system<decltype((v.context))>;
+  { v.management } -> dispatcher_backend::management<decltype((v.context))>;
+  { v.profile } -> dispatcher_backend::profile<decltype((v.context))>;
+  { v.property_exchange } -> dispatcher_backend::property_exchange<decltype((v.context))>;
+  { v.process_inquiry } -> dispatcher_backend::process_inquiry<decltype((v.context))>;
 };
 
 /// \brief Satisfied by ci_dispatcher configuration types which receive Property Exchange messages in pieces.
@@ -60,17 +64,24 @@ concept ci_dispatcher_config = requires(T v) {
 /// Their header and property data may then be larger than the buffer.
 template <typename T>
 concept ci_dispatcher_stream_config = ci_dispatcher_config<T> && requires(T v) {
-  { v.property_exchange_stream } -> dispatcher_backend::property_exchange_stream<decltype(v.context)>;
+  { v.property_exchange_stream } -> dispatcher_backend::property_exchange_stream<decltype((v.context))>;
 };
 
 /// \brief A configuration type for the ci_dispatcher which uses std::function<> for all of the available callbacks.
 ///
-/// \tparam Context  The type of the context object. This is passed to the callbacks to enable sharing of context.
+/// \tparam Context  The type of the context object. It is passed by reference to the callbacks to enable sharing of
+///   context.
 /// \tparam BufferSize  The size of the buffer used to hold the body of a message.
 template <typename Context, std::size_t BufferSize> struct function_config {
   /// \brief Constructs the configuration.
-  /// \param c  The context object which is passed to each of the callbacks.
-  constexpr explicit function_config(Context c = Context{}) : context{c} {}
+  /// \param c  The context object which is passed by reference to each of the callbacks.
+  constexpr explicit function_config(Context c = Context{}) : context(std::move(c)) {}
+  /// \brief Constructs the configuration with a context object which is constructed in place.
+  /// \tparam Args  The types of the arguments forwarded to the constructor of \p Context.
+  /// \param args  Arguments forwarded to the constructor of \p Context.
+  template <typename... Args>
+    requires std::constructible_from<Context, Args...>
+  constexpr explicit function_config(std::in_place_t, Args&&... args) : context(std::forward<Args>(args)...) {}
 
   [[no_unique_address]] Context context;                ///< The context object passed to the callbacks.
   static constexpr auto buffer_size = BufferSize;       ///< The size of the buffer used to hold the body of a message.
@@ -86,7 +97,8 @@ template <typename Context, std::size_t BufferSize> struct function_config {
 /// \brief A configuration type for the ci_dispatcher which uses std::function<> for all of the available callbacks and
 /// receives Property Exchange messages in pieces.
 ///
-/// \tparam Context  The type of the context object. This is passed to the callbacks to enable sharing of context.
+/// \tparam Context  The type of the context object. It is passed by reference to the callbacks to enable sharing of
+///   context.
 /// \tparam BufferSize  The size of the buffer used to hold the body of a message.
 template <typename Context, std::size_t BufferSize>
 struct function_stream_config : function_config<Context, BufferSize> {
@@ -148,6 +160,38 @@ public:
     requires(std::convertible_to<OtherConfig, Config>)
   constexpr explicit ci_dispatcher(b7 const device_id, std::uint8_t const group, OtherConfig&& config)
       : config_{std::forward<OtherConfig>(config)}, group_{group} {
+    header_.device_id = device_id;
+    static_assert(midi2::dispatcher<Config, std::byte, decltype(*this)>);
+  }
+
+  /// \brief Constructs a dispatcher with a device ID and group of 0 and a context object which is constructed in place.
+  ///
+  /// The arguments are passed to the configuration's std::in_place_t constructor which, for function_config and
+  /// function_stream_config, forwards them to the constructor of the context object. The std::in_place tag
+  /// distinguishes the arguments from those of the other constructors. For example:
+  ///
+  ///     ci_dispatcher<function_config<std::string, 128>> dispatcher{std::in_place, "name"};
+  ///
+  /// \tparam Args  The types of the arguments forwarded to the constructor of the context object.
+  /// \param args  Arguments forwarded to the constructor of the context object.
+  template <typename... Args>
+    requires std::constructible_from<Config, std::in_place_t, Args...>
+  constexpr explicit ci_dispatcher(std::in_place_t, Args&&... args)
+      : ci_dispatcher(b7{0U}, std::uint8_t{0}, std::in_place, std::forward<Args>(args)...) {}
+
+  /// \brief Constructs a dispatcher with a context object which is constructed in place.
+  ///
+  /// The arguments that follow std::in_place are passed to the configuration's std::in_place_t constructor which, for
+  /// function_config and function_stream_config, forwards them to the constructor of the context object.
+  ///
+  /// \tparam Args  The types of the arguments forwarded to the constructor of the context object.
+  /// \param device_id  The device ID which is recorded in the header passed to the message handlers.
+  /// \param group  The UMP group which is passed to the system.check_muid() handler.
+  /// \param args  Arguments forwarded to the constructor of the context object.
+  template <typename... Args>
+    requires std::constructible_from<Config, std::in_place_t, Args...>
+  constexpr explicit ci_dispatcher(b7 const device_id, std::uint8_t const group, std::in_place_t, Args&&... args)
+      : config_(std::in_place, std::forward<Args>(args)...), group_{group} {
     header_.device_id = device_id;
     static_assert(midi2::dispatcher<Config, std::byte, decltype(*this)>);
   }
@@ -1072,7 +1116,8 @@ void ci_dispatcher<Config>::dispatch(std::byte const s7) {
 /// \tparam BufferSize  The size of the buffer used to hold the body of a message.
 /// \param device_id  The device ID which is recorded in the header passed to the message handlers.
 /// \param group  The UMP group which is passed to the system.check_muid() handler.
-/// \param context  The context object which is passed to each of the handlers.
+/// \param context  The context object which is stored by the dispatcher's configuration and passed by reference to each
+///   of the handlers.
 /// \returns The new dispatcher.
 template <typename Context, std::size_t BufferSize>
 ci_dispatcher<function_config<Context, BufferSize>> make_function_dispatcher(b7 const device_id,
