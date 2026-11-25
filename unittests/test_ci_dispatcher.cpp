@@ -1582,7 +1582,7 @@ TEST(CIDispatcherContext, MoveOnly) {
   auto& config = dispatcher.config();
   ASSERT_NE(config.context, nullptr);
   EXPECT_EQ(*config.context, 42);
-  config.system.on_check_muid([](context& c, std::uint8_t, midi2::ci::muid) {
+  config.system.on_check_muid([](context const& c, std::uint8_t, midi2::ci::muid) {
     ++*c;
     return false;
   });
