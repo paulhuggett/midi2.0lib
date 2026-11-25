@@ -246,3 +246,59 @@ UMP Packets: 0x20816050 0x20817070
 
 \example ci_dispatcher.cpp
 \example ci_create_discovery.cpp
+
+\example pe_viewer.cpp
+
+This program displays the contents of a MIDI-CI Property Exchange message carried by an array of UMP System Exclusive
+(7-bit) packets. The packets are passed to a ci_dispatcher whose configuration streams Property Exchange messages: the
+header and then the property data are given to a single [peejay](https://github.com/paulhuggett/peejay) JSON parser
+piece by piece, so the message can be much larger than the dispatcher's 32-byte buffer. A peejay::writer backend
+prints the JSON with indentation. The dispatcher and parser are reset for each message, so that any number may be sent.
+The output begins:
+
+```
+Header:
+{
+  "status": 200
+}
+Property data:
+{
+  "manufacturerId": [
+    125,
+    0,
+    0
+```
+
+\example pe_zlib_viewer.cpp
+
+This program is a companion to pe_viewer.cpp. Its Property Exchange message carries a ProgramList whose JSON property
+data has been compressed with [zlib](https://zlib.net) and then encoded using Mcoded7, as described in "Compressed and
+Encoded JSON Property Data" in the Common Rules for MIDI-CI Property Exchange specification. The header's
+`mutualEncoding` property is `"zlib+Mcoded7"`. Each piece of property data from the ci_dispatcher is decoded by
+midi2::mcoded7::decoder and inflated by zlib before it is passed to the JSON parser, so neither the encoded nor the
+decompressed data is ever held in full. The 654 bytes of JSON travel as 256 bytes of Mcoded7. Property data whose
+`mutualEncoding` is `"Mcoded7"` (encoded but not compressed) or `"ASCII"` (neither) is also supported.
+
+As in pe_viewer.cpp, a peejay::writer prints the JSON; it is extended to remember the header's `mutualEncoding` and
+`mediaType` values. Any other `mutualEncoding`, a `mediaType` other than `application/json`, and JSON which is not
+well-formed UTF-8 are reported as errors.
+
+The output begins:
+
+```
+Header:
+{
+  "status": 200,
+  "mutualEncoding": "zlib+Mcoded7"
+}
+Property data:
+[
+  {
+    "title": "Grand Piano",
+    "bankPC": [
+      0,
+      0,
+      0
+    ]
+  },
+```
