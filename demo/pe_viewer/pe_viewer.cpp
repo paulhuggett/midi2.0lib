@@ -184,10 +184,11 @@ int main() {
   // Pass the bytes of each System Exclusive (7-bit) packet to the MIDI-CI dispatcher, which is the UMP dispatcher's
   // context.
   auto ump = midi2::ump::make_ump_function_dispatcher(std::ref(ci));
-  auto const sysex7 = [](dispatcher& ci_dispatcher, auto const& message) {
+  auto const sysex7 = []<midi2::ump::mt::data64 Status>(dispatcher& d,
+                                                        midi2::ump::data64::details::sysex7<Status> const& message) {
     using value_type = std::remove_cvref_t<decltype(message)>::value_type;
     for (value_type const b : message) {
-      ci_dispatcher.dispatch(static_cast<std::byte>(b));
+      d.dispatch(static_cast<std::byte>(b));
     }
   };
   // The first packet of each System Exclusive message must also prepare the dispatcher for a new MIDI-CI message.
