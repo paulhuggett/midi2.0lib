@@ -302,3 +302,41 @@ Property data:
     ]
   },
 ```
+
+\example workbench_device.cpp
+
+This macOS program is a MIDI 2.0 device that the [MIDI 2.0 Workbench](https://github.com/midi2-dev/MIDI2.0Workbench)
+can connect to and test. It creates a CoreMIDI virtual source and destination with the same name, both using the MIDI
+2.0 protocol, which the Workbench lists as a UMP endpoint. A ump_dispatcher answers the UMP Stream messages (Endpoint
+Discovery, Stream Configuration Request, and Function Block Discovery). The device's single function block carries
+MIDI-CI on group 1 (group 0 in the code): SysEx7 packets on that group are passed to a ci_dispatcher, and the replies
+are built with ci::create_message() and sent as SysEx7. The device answers Discovery, Inquiry: Endpoint, Profile
+Inquiry, Property Exchange Capabilities, and Property Exchange Get for the `ResourceList` and `DeviceInfo` resources.
+It also handles Invalidate MUID: when its own MUID is invalidated, or another device's Discovery uses the same MUID, it
+picks a new MUID and broadcasts a Discovery message so that other devices can connect to it again. It invalidates its
+MUID when it quits. Channel voice note messages are logged.
+
+Run the program, then start (or refresh) the Workbench. An optional argument changes the endpoint name. Press Ctrl-C to
+quit. Usage: `demo_workbench_device [-debug] [endpoint-name]`. Each message the device handles is logged, for example:
+
+```
+"midi2lib Demo Device" is ready (MUID 0x49BD0D0). Press Ctrl-C to quit.
+Endpoint Discovery: UMP v1.2 filter=0x1F
+Function Block Discovery: block=0xFF filter=0x03
+MIDI-CI Discovery: from MUID 0x317967A, CI version 0x02
+```
+
+Pass `-debug` to also log each UMP message received (`<-`) or sent (`->`) as hexadecimal words, and the bytes of each
+MIDI-CI System Exclusive message:
+
+```
+<- UMP: 30167E7F 0D720256
+<- UMP: 30266848 003B0A7D
+<- UMP: 30327B00 00000000
+<- SysEx (14 bytes): 7E 7F 0D 72 02 56 68 48 00 3B 0A 7D 7B 00
+MIDI-CI Inquiry: Endpoint: status=0x00
+-> SysEx (29 bytes): 7E 7F 0D 73 02 3B 0A 7D 7B 56 68 48 00 00 0D 00
+   6D 69 64 69 32 6C 69 62 2D 30 30 30 31
+-> UMP: 30167E7F 0D73023B
+...
+```
