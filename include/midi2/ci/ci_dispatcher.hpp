@@ -14,16 +14,19 @@
 #ifndef MIDI2_CI_DISPATCHER_HPP
 #define MIDI2_CI_DISPATCHER_HPP
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <span>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <version>
 
 #include "midi2/ci/ci_dispatcher_backend.hpp"
 #include "midi2/ci/ci_types.hpp"
@@ -33,28 +36,54 @@ namespace midi2::ci {
 
 /// \brief Satisfied by types which can be used to configure a ci_dispatcher.
 ///
-/// The type must have a buffer_size member (the size of the buffer used to hold message bodies), a context member
-/// (whose value is passed to each of the message handlers), and members named system, management, profile,
-/// property_exchange, and process_inquiry which satisfy the corresponding dispatcher_backend concepts.
+/// The type must have a constant buffer_size member (the size of the buffer used to hold message bodies) which is at
+/// least the size of a MIDI-CI message header, a context member (which is passed by reference to each of the message
+/// handlers), and members named system, management, profile, property_exchange, and process_inquiry which satisfy the
+/// corresponding dispatcher_backend concepts.
+///
+/// The context is passed to the handlers as an lvalue and with any const qualification that the configuration has. This
+/// is why the concept uses decltype((v.context)): decltype(v.context) would be the type with which the member was
+/// declared, so would accept a const configuration whose handlers take a reference to a non-const context.
+///
+/// The type may also have a property_exchange_stream member. See ci_dispatcher_stream_config.
 template <typename T>
 concept ci_dispatcher_config = requires(T v) {
   { v.buffer_size } -> std::convertible_to<std::size_t>;
+  requires std::remove_cvref_t<T>::buffer_size >= sizeof(packed::header);
   { v.context };
-  { v.system } -> dispatcher_backend::system<decltype(v.context)>;
-  { v.management } -> dispatcher_backend::management<decltype(v.context)>;
-  { v.profile } -> dispatcher_backend::profile<decltype(v.context)>;
-  { v.property_exchange } -> dispatcher_backend::property_exchange<decltype(v.context)>;
-  { v.process_inquiry } -> dispatcher_backend::process_inquiry<decltype(v.context)>;
+  { v.system } -> dispatcher_backend::system<decltype((v.context))>;
+  { v.management } -> dispatcher_backend::management<decltype((v.context))>;
+  { v.profile } -> dispatcher_backend::profile<decltype((v.context))>;
+  { v.property_exchange } -> dispatcher_backend::property_exchange<decltype((v.context))>;
+  { v.process_inquiry } -> dispatcher_backend::process_inquiry<decltype((v.context))>;
+};
+
+/// \brief Satisfied by ci_dispatcher configuration types which receive Property Exchange messages in pieces.
+///
+/// In addition to the requirements of ci_dispatcher_config, the type must have a property_exchange_stream member which
+/// satisfies dispatcher_backend::property_exchange_stream. The dispatcher passes the Get, Get Reply, Set, Set Reply,
+/// Subscription, Subscription Reply, and Notify messages to this member instead of to the property_exchange member.
+/// Their header and property data may then be larger than the buffer.
+template <typename T>
+concept ci_dispatcher_stream_config = ci_dispatcher_config<T> && requires(T v) {
+  { v.property_exchange_stream } -> dispatcher_backend::property_exchange_stream<decltype((v.context))>;
 };
 
 /// \brief A configuration type for the ci_dispatcher which uses std::function<> for all of the available callbacks.
 ///
-/// \tparam Context  The type of the context object. This is passed to the callbacks to enable sharing of context.
+/// \tparam Context  The type of the context object. It is passed by reference to the callbacks to enable sharing of
+///   context.
 /// \tparam BufferSize  The size of the buffer used to hold the body of a message.
 template <typename Context, std::size_t BufferSize> struct function_config {
   /// \brief Constructs the configuration.
-  /// \param c  The context object which is passed to each of the callbacks.
-  constexpr explicit function_config(Context c = Context{}) : context{c} {}
+  /// \param c  The context object which is passed by reference to each of the callbacks.
+  constexpr explicit function_config(Context c = Context{}) : context(std::move(c)) {}
+  /// \brief Constructs the configuration with a context object which is constructed in place.
+  /// \tparam Args  The types of the arguments forwarded to the constructor of \p Context.
+  /// \param args  Arguments forwarded to the constructor of \p Context.
+  template <typename... Args>
+    requires std::constructible_from<Context, Args...>
+  constexpr explicit function_config(std::in_place_t, Args&&... args) : context(std::forward<Args>(args)...) {}
 
   [[no_unique_address]] Context context;                ///< The context object passed to the callbacks.
   static constexpr auto buffer_size = BufferSize;       ///< The size of the buffer used to hold the body of a message.
@@ -65,6 +94,19 @@ template <typename Context, std::size_t BufferSize> struct function_config {
   dispatcher_backend::property_exchange_function<Context> property_exchange;
   /// Callbacks for process inquiry messages.
   dispatcher_backend::process_inquiry_function<Context> process_inquiry;
+};
+
+/// \brief A configuration type for the ci_dispatcher which uses std::function<> for all of the available callbacks and
+/// receives Property Exchange messages in pieces.
+///
+/// \tparam Context  The type of the context object. It is passed by reference to the callbacks to enable sharing of
+///   context.
+/// \tparam BufferSize  The size of the buffer used to hold the body of a message.
+template <typename Context, std::size_t BufferSize>
+struct function_stream_config : function_config<Context, BufferSize> {
+  using function_config<Context, BufferSize>::function_config;
+  /// Callbacks for the pieces of Property Exchange messages.
+  dispatcher_backend::property_exchange_stream_function<Context> property_exchange_stream;
 };
 
 /// \brief Satisfied by trivially copyable types with an alignment of 1, which can be safely accessed in a byte buffer.
@@ -80,6 +122,10 @@ concept unaligned_copyable = alignof(T) == 1 && std::is_trivially_copyable_v<T>;
 /// \note Once a message has been dispatched, any further bytes are discarded until reset() is called to prepare the
 ///   dispatcher for the next message.
 ///
+/// If the configuration satisfies ci_dispatcher_stream_config, Property Exchange messages which carry header and
+/// property data are passed to its property_exchange_stream member in pieces of at most config_type::buffer_size bytes.
+/// Otherwise, each message must fit in the buffer.
+///
 /// \tparam Config  A type satisfying ci_dispatcher_config (or a std::reference_wrapper<> of one) which provides the
 ///   context value, the buffer size, and the message handlers.
 template <typename Config>
@@ -90,6 +136,8 @@ public:
   using input_type = std::byte;
   /// The configuration type.
   using config_type = std::remove_reference_t<std::unwrap_reference_t<Config>>;
+  /// True if Property Exchange messages are passed to the configuration's property_exchange_stream member in pieces.
+  static constexpr bool pe_stream = ci_dispatcher_stream_config<config_type>;
 
   /// \brief Constructs a dispatcher with a device ID and group of 0 and a default-constructed configuration.
   constexpr ci_dispatcher() noexcept : ci_dispatcher{b7{0U}, 0U, Config{}} {}
@@ -118,6 +166,38 @@ public:
     static_assert(midi2::dispatcher<Config, std::byte, decltype(*this)>);
   }
 
+  /// \brief Constructs a dispatcher with a device ID and group of 0 and a context object which is constructed in place.
+  ///
+  /// The arguments are passed to the configuration's std::in_place_t constructor which, for function_config and
+  /// function_stream_config, forwards them to the constructor of the context object. The std::in_place tag
+  /// distinguishes the arguments from those of the other constructors. For example:
+  ///
+  ///     ci_dispatcher<function_config<std::string, 128>> dispatcher{std::in_place, "name"};
+  ///
+  /// \tparam Args  The types of the arguments forwarded to the constructor of the context object.
+  /// \param args  Arguments forwarded to the constructor of the context object.
+  template <typename... Args>
+    requires std::constructible_from<Config, std::in_place_t, Args...>
+  constexpr explicit ci_dispatcher(std::in_place_t, Args&&... args)
+      : ci_dispatcher(b7{0U}, std::uint8_t{0}, std::in_place, std::forward<Args>(args)...) {}
+
+  /// \brief Constructs a dispatcher with a context object which is constructed in place.
+  ///
+  /// The arguments that follow std::in_place are passed to the configuration's std::in_place_t constructor which, for
+  /// function_config and function_stream_config, forwards them to the constructor of the context object.
+  ///
+  /// \tparam Args  The types of the arguments forwarded to the constructor of the context object.
+  /// \param device_id  The device ID which is recorded in the header passed to the message handlers.
+  /// \param group  The UMP group which is passed to the system.check_muid() handler.
+  /// \param args  Arguments forwarded to the constructor of the context object.
+  template <typename... Args>
+    requires std::constructible_from<Config, std::in_place_t, Args...>
+  constexpr explicit ci_dispatcher(b7 const device_id, std::uint8_t const group, std::in_place_t, Args&&... args)
+      : config_(std::in_place, std::forward<Args>(args)...), group_{group} {
+    header_.device_id = device_id;
+    static_assert(midi2::dispatcher<Config, std::byte, decltype(*this)>);
+  }
+
   /// \brief Sets the UMP group which is passed to the system.check_muid() handler.
   /// \param group  The UMP group.
   constexpr void set_group(std::uint8_t const group) noexcept { group_ = group; }
@@ -127,9 +207,11 @@ public:
 
   /// \brief Prepares the dispatcher to receive a new message.
   ///
-  /// Any partially received message is abandoned without calling a handler. The group, device ID, and configuration
-  /// are unchanged. Call this function at the start of each System Exclusive message (or after its end).
-  constexpr void reset() noexcept {
+  /// Any partially received message is abandoned. If a streamed Property Exchange message is abandoned, the
+  /// property_exchange_stream.abort() handler is called; no other handler is called. The group, device ID, and
+  /// configuration are unchanged. Call this function at the start of each System Exclusive message (or after its end).
+  constexpr void reset() noexcept(!pe_stream) {
+    this->abandon_stream();
     count_ = header_size;
     type_ = static_cast<message>(0x00);
     consumer_ = &ci_dispatcher::header;
@@ -172,6 +254,12 @@ private:
   std::array<std::byte, config_type::buffer_size> buffer_{};
   unsigned pos_ = 0;
 
+  // The number of bytes of the header or property data of a streamed Property Exchange message which are yet to be
+  // received.
+  std::uint16_t stream_remaining_ = 0;
+  // True between the calls to the property_exchange_stream start() and end() handlers.
+  bool stream_active_ = false;
+
   void discard();
   void overflow();
 
@@ -202,6 +290,27 @@ private:
   void pe_capabilities();
   void pe_capabilities_reply();
   void property_exchange();
+
+  // Streamed Property Exchange messages
+
+  /// Converts a message type to the corresponding Property Exchange type.
+  /// \param m  The type of a Property Exchange message which has header and property data.
+  /// \returns The Property Exchange type.
+  [[nodiscard]] static constexpr ci::property_exchange::property_exchange_type pe_type(message m) noexcept;
+  /// Calls the property_exchange_stream.abort() handler if a streamed message is in progress.
+  constexpr void abandon_stream();
+  /// Prepares to receive the next piece of the header or property data of a streamed message.
+  constexpr void stream_next_piece() noexcept;
+  /// Consumes the Request ID and header length and calls the property_exchange_stream.start() handler.
+  void pe_stream_start();
+  /// Consumes a piece of the header data and passes it to the property_exchange_stream.header_data() handler.
+  void pe_stream_header_data();
+  /// Consumes the chunk fields and calls the property_exchange_stream.chunk() handler, followed by end() if there is no
+  /// property data.
+  void pe_stream_chunk();
+  /// Consumes a piece of the property data and passes it to the property_exchange_stream.property_data() handler. The
+  /// last piece is followed by a call to end().
+  void pe_stream_property_data();
 
   // Process Inquiry messages
   void process_inquiry_capabilities();
@@ -690,62 +799,214 @@ void ci_dispatcher<Config>::pe_capabilities_reply() {
 template <typename Config>
   requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
 void ci_dispatcher<Config>::property_exchange() {
+  if constexpr (pe_stream) {
+    this->pe_stream_start();
+  } else {
+    using ci::property_exchange::packed::property_exchange_pt1;
+    using ci::property_exchange::packed::property_exchange_pt2;
+    auto size = offsetof(property_exchange_pt1, header);
+    auto const* const pt1 = reinterpret_cast<property_exchange_pt1 const*>(buffer_.data());
+    auto const header_length = details::from_le7(pt1->header_length).get();
+    if (pos_ == size && header_length > 0) {
+      count_ = header_length * sizeof(pt1->header[0]);
+      return;
+    }
+    size += header_length;
+    constexpr auto pt2_size = offsetof(property_exchange_pt2, data);
+    if (pos_ == size) {
+      count_ = pt2_size;
+      return;
+    }
+
+    auto const* const pt2 = reinterpret_cast<property_exchange_pt2 const*>(buffer_.data() + size);
+    size += pt2_size;
+    auto const data_length = details::from_le7(pt2->data_length).get();
+    if (pos_ == size && data_length > 0) {
+      count_ = data_length * sizeof(pt2->data[0]);
+      return;
+    }
+
+    using chunk_info = ci::property_exchange::chunk_info;
+
+    auto const chunk = chunk_info{.number_of_chunks = details::from_le7(pt2->number_of_chunks),
+                                  .chunk_number = details::from_le7(pt2->chunk_number)};
+    auto const request = b7{to_underlying(pt1->request_id)};
+    auto const header = std::span{&pt1->header[0], header_length};
+    auto const data = std::span{&pt2->data[0], data_length};
+
+    auto& c = this->config();
+    using enum message;
+    using ci::property_exchange::get;
+    using ci::property_exchange::get_reply;
+    using ci::property_exchange::notify;
+    using ci::property_exchange::set;
+    using ci::property_exchange::set_reply;
+    using ci::property_exchange::subscription;
+    using ci::property_exchange::subscription_reply;
+
+    auto& pe = c.property_exchange;
+    switch (type_) {
+    case pe_get: pe.get(c.context, header_, get::make(chunk, request, header)); break;
+    case pe_get_reply: pe.get_reply(c.context, header_, get_reply::make(chunk, request, header, data)); break;
+    case pe_set: pe.set(c.context, header_, set::make(chunk, request, header, data)); break;
+    case pe_set_reply: pe.set_reply(c.context, header_, set_reply::make(chunk, request, header, data)); break;
+    case pe_sub: pe.subscription(c.context, header_, subscription::make(chunk, request, header, data)); break;
+    case pe_sub_reply:
+      pe.subscription_reply(c.context, header_, subscription_reply::make(chunk, request, header, data));
+      break;
+    case pe_notify: pe.notify(c.context, header_, notify::make(chunk, request, header, data)); break;
+    default: assert(false); break;
+    }
+    consumer_ = &ci_dispatcher::discard;
+  }
+}
+
+// pe type
+// ~~~~~~~
+template <typename Config>
+  requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
+constexpr ci::property_exchange::property_exchange_type ci_dispatcher<Config>::pe_type(message const m) noexcept {
+  using enum ci::property_exchange::property_exchange_type;
+  switch (m) {
+  case message::pe_get: return get;
+  case message::pe_get_reply: return get_reply;
+  case message::pe_set: return set;
+  case message::pe_set_reply: return set_reply;
+  case message::pe_sub: return subscription;
+  case message::pe_sub_reply: return subscription_reply;
+  case message::pe_notify: return notify;
+  default: assert(false && "not a property exchange message with header and property data"); return get;
+  }
+}
+
+// abandon stream
+// ~~~~~~~~~~~~~~
+template <typename Config>
+  requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
+constexpr void ci_dispatcher<Config>::abandon_stream() {
+  if constexpr (pe_stream) {
+    if (stream_active_) {
+      stream_active_ = false;
+      auto& c = this->config();
+      c.property_exchange_stream.abort(c.context, header_);
+    }
+  }
+}
+
+// stream next piece
+// ~~~~~~~~~~~~~~~~~
+template <typename Config>
+  requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
+constexpr void ci_dispatcher<Config>::stream_next_piece() noexcept {
+  assert(stream_remaining_ > 0);
+  pos_ = 0;
+  count_ = std::min(std::size_t{stream_remaining_}, buffer_.size());
+}
+
+// pe stream start
+// ~~~~~~~~~~~~~~~
+template <typename Config>
+  requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
+void ci_dispatcher<Config>::pe_stream_start() {
   using ci::property_exchange::packed::property_exchange_pt1;
   using ci::property_exchange::packed::property_exchange_pt2;
-  auto size = offsetof(property_exchange_pt1, header);
+  static_assert(offsetof(property_exchange_pt2, data) <= sizeof(packed::header),
+                "ci_dispatcher_config guarantees room for the fixed fields of a property exchange message");
+  assert(pos_ == offsetof(property_exchange_pt1, header));
+
   auto const* const pt1 = reinterpret_cast<property_exchange_pt1 const*>(buffer_.data());
-  auto const header_length = details::from_le7(pt1->header_length).get();
-  if (pos_ == size && header_length > 0) {
-    count_ = header_length * sizeof(pt1->header[0]);
-    return;
+  auto const start = ci::property_exchange::stream_start{.type = pe_type(type_),
+                                                         .request = b7{to_underlying(pt1->request_id)},
+                                                         .header_length = details::from_le7(pt1->header_length)};
+  stream_active_ = true;
+  stream_remaining_ = start.header_length.get();
+  if (stream_remaining_ > 0) {
+    consumer_ = &ci_dispatcher::pe_stream_header_data;
+    this->stream_next_piece();
+  } else {
+    consumer_ = &ci_dispatcher::pe_stream_chunk;
+    pos_ = 0;
+    count_ = offsetof(property_exchange_pt2, data);
   }
-  size += header_length;
-  constexpr auto pt2_size = offsetof(property_exchange_pt2, data);
-  if (pos_ == size) {
-    count_ = pt2_size;
-    return;
-  }
-
-  auto const* const pt2 = reinterpret_cast<property_exchange_pt2 const*>(buffer_.data() + size);
-  size += pt2_size;
-  auto const data_length = details::from_le7(pt2->data_length).get();
-  if (pos_ == size && data_length > 0) {
-    count_ = data_length * sizeof(pt2->data[0]);
-    return;
-  }
-
-  using chunk_info = ci::property_exchange::chunk_info;
-
-  auto const chunk = chunk_info{.number_of_chunks = details::from_le7(pt2->number_of_chunks),
-                                .chunk_number = details::from_le7(pt2->chunk_number)};
-  auto const request = b7{to_underlying(pt1->request_id)};
-  auto const header = std::span{&pt1->header[0], header_length};
-  auto const data = std::span{&pt2->data[0], data_length};
-
   auto& c = this->config();
-  using enum message;
-  using ci::property_exchange::get;
-  using ci::property_exchange::get_reply;
-  using ci::property_exchange::notify;
-  using ci::property_exchange::set;
-  using ci::property_exchange::set_reply;
-  using ci::property_exchange::subscription;
-  using ci::property_exchange::subscription_reply;
+  c.property_exchange_stream.start(c.context, header_, start);
+}
 
-  auto& pe = c.property_exchange;
-  switch (type_) {
-  case pe_get: pe.get(c.context, header_, get::make(chunk, request, header)); break;
-  case pe_get_reply: pe.get_reply(c.context, header_, get_reply::make(chunk, request, header, data)); break;
-  case pe_set: pe.set(c.context, header_, set::make(chunk, request, header, data)); break;
-  case pe_set_reply: pe.set_reply(c.context, header_, set_reply::make(chunk, request, header, data)); break;
-  case pe_sub: pe.subscription(c.context, header_, subscription::make(chunk, request, header, data)); break;
-  case pe_sub_reply:
-    pe.subscription_reply(c.context, header_, subscription_reply::make(chunk, request, header, data));
-    break;
-  case pe_notify: pe.notify(c.context, header_, notify::make(chunk, request, header, data)); break;
-  default: assert(false); break;
+// pe stream header data
+// ~~~~~~~~~~~~~~~~~~~~~
+template <typename Config>
+  requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
+void ci_dispatcher<Config>::pe_stream_header_data() {
+  using ci::property_exchange::packed::property_exchange_pt2;
+  assert(pos_ > 0 && pos_ <= stream_remaining_);
+#if defined(__cpp_lib_start_lifetime_as) && __cpp_lib_start_lifetime_as >= 202207L
+  auto const piece = std::span{std::start_lifetime_as<char const>(buffer_.data()), pos_};
+#else
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  auto const piece = std::span{reinterpret_cast<char const*>(buffer_.data()), pos_};
+#endif
+  stream_remaining_ = static_cast<std::uint16_t>(stream_remaining_ - pos_);
+  if (stream_remaining_ > 0) {
+    this->stream_next_piece();
+  } else {
+    consumer_ = &ci_dispatcher::pe_stream_chunk;
+    pos_ = 0;
+    count_ = offsetof(property_exchange_pt2, data);
   }
+  auto& c = this->config();
+  c.property_exchange_stream.header_data(c.context, header_, piece);
+}
+
+// pe stream chunk
+// ~~~~~~~~~~~~~~~
+template <typename Config>
+  requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
+void ci_dispatcher<Config>::pe_stream_chunk() {
+  using ci::property_exchange::packed::property_exchange_pt2;
+  assert(pos_ == offsetof(property_exchange_pt2, data));
+
+#if defined(__cpp_lib_start_lifetime_as) && __cpp_lib_start_lifetime_as >= 202207L
+  auto const* const pt2 = std::start_lifetime_as<property_exchange_pt2 const>(buffer_.data());
+#else
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  auto const* const pt2 = reinterpret_cast<property_exchange_pt2 const*>(buffer_.data());
+#endif
+  auto const chunk =
+      ci::property_exchange::stream_chunk{.chunk = {.number_of_chunks = details::from_le7(pt2->number_of_chunks),
+                                                    .chunk_number = details::from_le7(pt2->chunk_number)},
+                                          .data_length = details::from_le7(pt2->data_length)};
+  stream_remaining_ = chunk.data_length.get();
+  auto& c = this->config();
+  if (stream_remaining_ > 0) {
+    consumer_ = &ci_dispatcher::pe_stream_property_data;
+    this->stream_next_piece();
+    c.property_exchange_stream.chunk(c.context, header_, chunk);
+    return;
+  }
+  stream_active_ = false;
   consumer_ = &ci_dispatcher::discard;
+  c.property_exchange_stream.chunk(c.context, header_, chunk);
+  c.property_exchange_stream.end(c.context, header_);
+}
+
+// pe stream property data
+// ~~~~~~~~~~~~~~~~~~~~~~~
+template <typename Config>
+  requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
+void ci_dispatcher<Config>::pe_stream_property_data() {
+  assert(pos_ > 0 && pos_ <= stream_remaining_);
+  auto const piece = std::span<std::byte const>{buffer_.data(), pos_};
+  stream_remaining_ = static_cast<std::uint16_t>(stream_remaining_ - pos_);
+  auto& c = this->config();
+  if (stream_remaining_ > 0) {
+    this->stream_next_piece();
+    c.property_exchange_stream.property_data(c.context, header_, piece);
+    return;
+  }
+  stream_active_ = false;
+  consumer_ = &ci_dispatcher::discard;
+  c.property_exchange_stream.property_data(c.context, header_, piece);
+  c.property_exchange_stream.end(c.context, header_);
 }
 
 // process inquiry capabilities
@@ -834,6 +1095,7 @@ void ci_dispatcher<Config>::discard() {
 template <typename Config>
   requires ci_dispatcher_config<std::unwrap_reference_t<Config>>
 void ci_dispatcher<Config>::overflow() {
+  this->abandon_stream();
   auto& c = this->config();
   c.system.buffer_overflow(c.context);
   count_ = 0;
@@ -866,7 +1128,8 @@ void ci_dispatcher<Config>::dispatch(std::byte const s7) {
 /// \tparam BufferSize  The size of the buffer used to hold the body of a message.
 /// \param device_id  The device ID which is recorded in the header passed to the message handlers.
 /// \param group  The UMP group which is passed to the system.check_muid() handler.
-/// \param context  The context object which is passed to each of the handlers.
+/// \param context  The context object which is stored by the dispatcher's configuration and passed by reference to each
+///   of the handlers.
 /// \returns The new dispatcher.
 template <typename Context, std::size_t BufferSize>
 ci_dispatcher<function_config<Context, BufferSize>> make_function_dispatcher(b7 const device_id,

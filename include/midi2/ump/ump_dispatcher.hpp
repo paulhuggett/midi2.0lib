@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <span>
 #include <type_traits>
+#include <utility>
 
 #include "midi2/dispatcher.hpp"
 #include "midi2/ump/ump_dispatcher_backend.hpp"
@@ -60,32 +61,42 @@ namespace midi2::ump {
 
 /// \brief Satisfied by types which can be used to configure a ump_dispatcher.
 ///
-/// The type must have a member named context (whose value is passed to each of the message handlers) and members
+/// The type must have a member named context (which is passed by reference to each of the message handlers) and members
 /// named utility, system, m1cvm, data64, m2cvm, data128, stream, and flex which satisfy the corresponding
 /// dispatcher_backend concepts.
+///
+/// The context is passed to the handlers as an lvalue and with any const qualification that the configuration has. This
+/// is why the concept uses decltype((v.context)): decltype(v.context) would be the type with which the member was
+/// declared, so would accept a const configuration whose handlers take a reference to a non-const context.
 template <typename T>
 concept ump_dispatcher_config = requires(T v) {
   { v.context };
-  { v.utility } -> dispatcher_backend::utility<decltype(v.context)>;
-  { v.system } -> dispatcher_backend::system<decltype(v.context)>;
-  { v.m1cvm } -> dispatcher_backend::m1cvm<decltype(v.context)>;
-  { v.data64 } -> dispatcher_backend::data64<decltype(v.context)>;
-  { v.m2cvm } -> dispatcher_backend::m2cvm<decltype(v.context)>;
-  { v.data128 } -> dispatcher_backend::data128<decltype(v.context)>;
-  { v.stream } -> dispatcher_backend::stream<decltype(v.context)>;
-  { v.flex } -> dispatcher_backend::flex_data<decltype(v.context)>;
+  { v.utility } -> dispatcher_backend::utility<decltype((v.context))>;
+  { v.system } -> dispatcher_backend::system<decltype((v.context))>;
+  { v.m1cvm } -> dispatcher_backend::m1cvm<decltype((v.context))>;
+  { v.data64 } -> dispatcher_backend::data64<decltype((v.context))>;
+  { v.m2cvm } -> dispatcher_backend::m2cvm<decltype((v.context))>;
+  { v.data128 } -> dispatcher_backend::data128<decltype((v.context))>;
+  { v.stream } -> dispatcher_backend::stream<decltype((v.context))>;
+  { v.flex } -> dispatcher_backend::flex_data<decltype((v.context))>;
 };
 
 /// A configuration type for the ump_dispatcher which uses std::function<> for all the available callbacks.
 /// \note This is probably the simplest possible configuration type to use, but may not always be the most time and
 ///   space efficient. Use judiciously!
 ///
-/// \tparam Context  The type of the context object. This is passed to the callbacks to enable sharing
+/// \tparam Context  The type of the context object. It is passed by reference to the callbacks to enable sharing
 ///   of context.
 template <typename Context> struct function_config {
   /// \brief Constructs the configuration.
-  /// \param c  The context object which is passed to each of the callbacks.
+  /// \param c  The context object which is passed by reference to each of the callbacks.
   explicit function_config(Context c) : context{std::move(c)} {}
+  /// \brief Constructs the configuration with a context object which is constructed in place.
+  /// \tparam Args  The types of the arguments forwarded to the constructor of \p Context.
+  /// \param args  Arguments forwarded to the constructor of \p Context.
+  template <typename... Args>
+    requires std::constructible_from<Context, Args...>
+  constexpr explicit function_config(std::in_place_t, Args&&... args) : context(std::forward<Args>(args)...) {}
 
   [[no_unique_address]] Context context;                  ///< The context object passed to the callbacks.
   dispatcher_backend::utility_function<Context> utility;  ///< Callbacks for utility messages.
@@ -121,6 +132,23 @@ public:
     requires(std::convertible_to<OtherConfig, Config> &&
              !std::is_same_v<std::remove_cvref_t<OtherConfig>, ump_dispatcher>)
   constexpr explicit ump_dispatcher(OtherConfig&& config) : config_{std::forward<OtherConfig>(config)} {
+    static_assert(midi2::dispatcher<Config, std::uint32_t, decltype(*this)>);
+  }
+
+  /// \brief Constructs a dispatcher with a context object which is constructed in place.
+  ///
+  /// The arguments that follow std::in_place are passed to the configuration's std::in_place_t constructor which, for
+  /// function_config, forwards them to the constructor of the context object. The std::in_place tag distinguishes the
+  /// arguments from a configuration. For example:
+  ///
+  ///     ump_dispatcher<function_config<std::string>> dispatcher{std::in_place, "name"};
+  ///
+  /// \tparam Args  The types of the arguments forwarded to the constructor of the context object.
+  /// \param args  Arguments forwarded to the constructor of the context object.
+  template <typename... Args>
+    requires std::constructible_from<Config, std::in_place_t, Args...>
+  constexpr explicit ump_dispatcher(std::in_place_t, Args&&... args)
+      : config_(std::in_place, std::forward<Args>(args)...) {
     static_assert(midi2::dispatcher<Config, std::uint32_t, decltype(*this)>);
   }
 
@@ -515,7 +543,8 @@ void ump_dispatcher<Config>::flex_data_message() {
 /// `dispatcher.config().m1cvm.on_note_on(...)`.
 ///
 /// \tparam Context  The type of the context object.
-/// \param context  The context object which is passed to each of the handlers.
+/// \param context  The context object which is stored by the dispatcher's configuration and passed by reference to each
+///   of the handlers.
 /// \returns The new dispatcher.
 template <typename Context>
 ump_dispatcher<function_config<Context>> make_ump_function_dispatcher(Context&& context = Context{}) {

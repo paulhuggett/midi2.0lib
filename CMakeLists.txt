@@ -114,6 +114,30 @@ if(MIDI2_UNITTEST OR MIDI2_FUZZTEST OR MIDI2_DEMO)
 endif()
 
 if(MIDI2_DEMO)
+  # The demo programs use the peejay JSON parser. We don't want its unit or system tests.
+  set(PEEJAY_UNITTEST No)
+  set(PEEJAY_SYSTEMTEST No)
+  FetchContent_Declare(
+    peejay
+    GIT_REPOSITORY https://github.com/paulhuggett/peejay.git
+    GIT_TAG v2.2
+    GIT_SHALLOW Yes
+  )
+  # The compressed Property Exchange demo uses zlib to inflate property data. It needs only the static library: not
+  # zlib's shared library, tests, or installation. It is a SYSTEM dependency so that warnings from its headers and
+  # macros (such as the old-style cast in inflateInit()) are not reported in our code.
+  set(ZLIB_BUILD_TESTING No)
+  set(ZLIB_BUILD_SHARED No)
+  set(ZLIB_INSTALL No)
+  FetchContent_Declare(
+    zlib
+    GIT_REPOSITORY https://github.com/madler/zlib.git
+    GIT_TAG v1.4
+    GIT_SHALLOW Yes
+    SYSTEM
+  )
+  FetchContent_MakeAvailable(peejay zlib)
+
   add_subdirectory(demo)
 endif(MIDI2_DEMO)
 

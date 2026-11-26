@@ -118,7 +118,14 @@ public:
   /// \brief Returns the value of the referenced element.
   /// \returns The value of the referenced element.
   // NOLINTNEXTLINE(google-explicit-constructor,hicpp-explicit-conversions)
-  constexpr operator value_type() const noexcept { return owner_->data(index_); }
+  constexpr operator value_type() const noexcept { return this->get(); }
+
+  /// \brief Returns the value of the referenced element.
+  ///
+  /// This is equivalent to the conversion to value_type, for use where an implicit conversion is not applied.
+  ///
+  /// \returns The value of the referenced element.
+  [[nodiscard]] constexpr value_type get() const noexcept { return owner_->data(index_); }
 
   /// \brief Moves the proxy to refer to the next element.
   /// \returns *this

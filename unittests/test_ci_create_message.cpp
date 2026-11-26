@@ -765,6 +765,15 @@ TEST_F(CICreateMessage, ProfileEnabled) {
 // NOLINTNEXTLINE(google-build-using-namespace)
 using namespace std::string_view_literals;
 
+namespace {
+
+/// \returns The bytes of \p s, as used for Property Exchange property data.
+[[nodiscard]] std::span<std::byte const> bytes(std::string_view const s) noexcept {
+  return std::as_bytes(std::span{s});
+}
+
+}  // end anonymous namespace
+
 TEST_F(CICreateMessage, PropertyExchangeGetPropertyData) {
   constexpr auto destination = 0x0F_b;
 
@@ -871,7 +880,7 @@ TEST_F(CICreateMessage, PropertyExchangeGetPropertyDataReply) {
       .remote_muid = from_le7(sender_muid_),
       .local_muid = from_le7(destination_muid_),
   };
-  constexpr midi2::ci::property_exchange::get_reply get_reply{
+  midi2::ci::property_exchange::get_reply const get_reply{
       .chunk =
           midi2::ci::property_exchange::chunk_info{
               .number_of_chunks = from_le7(total_chunks),
@@ -879,7 +888,7 @@ TEST_F(CICreateMessage, PropertyExchangeGetPropertyDataReply) {
           },
       .request = from_le7(request),
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_THAT(make_message(hdr, get_reply), testing::ElementsAreArray(expected));
 }
@@ -932,7 +941,7 @@ TEST_F(CICreateMessage, PropertyExchangeSetPropertyData) {
       .remote_muid = from_le7(sender_muid_),
       .local_muid = from_le7(destination_muid_),
   };
-  constexpr midi2::ci::property_exchange::set set{
+  midi2::ci::property_exchange::set const set{
       .chunk =
           midi2::ci::property_exchange::chunk_info{
               .number_of_chunks = from_le7(total_chunks),
@@ -940,7 +949,7 @@ TEST_F(CICreateMessage, PropertyExchangeSetPropertyData) {
           },
       .request = from_le7(request),
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_THAT(make_message(hdr, set), testing::ElementsAreArray(expected));
 }
@@ -1049,7 +1058,7 @@ TEST_F(CICreateMessage, PropertyExchangeSubscription) {
       .remote_muid = from_le7(sender_muid_),
       .local_muid = from_le7(destination_muid_),
   };
-  constexpr midi2::ci::property_exchange::subscription subscription{
+  midi2::ci::property_exchange::subscription const subscription{
       .chunk =
           midi2::ci::property_exchange::chunk_info{
               .number_of_chunks = from_le7(total_chunks),
@@ -1057,7 +1066,7 @@ TEST_F(CICreateMessage, PropertyExchangeSubscription) {
           },
       .request = from_le7(request),
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_THAT(make_message(hdr, subscription), testing::ElementsAreArray(expected));
 }
@@ -1106,7 +1115,7 @@ TEST_F(CICreateMessage, PropertyExchangeSubscriptionReply) {
       .remote_muid = from_le7(sender_muid_),
       .local_muid = from_le7(destination_muid_),
   };
-  constexpr midi2::ci::property_exchange::subscription_reply subscription_reply{
+  midi2::ci::property_exchange::subscription_reply const subscription_reply{
       .chunk =
           midi2::ci::property_exchange::chunk_info{
               .number_of_chunks = from_le7(total_chunks),
@@ -1114,7 +1123,7 @@ TEST_F(CICreateMessage, PropertyExchangeSubscriptionReply) {
           },
       .request = from_le7(request),
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_THAT(make_message(hdr, subscription_reply), testing::ElementsAreArray(expected));
 }
@@ -1161,7 +1170,7 @@ TEST_F(CICreateMessage, PropertyExchangeNotify) {
       .remote_muid = from_le7(sender_muid_),
       .local_muid = from_le7(destination_muid_),
   };
-  constexpr midi2::ci::property_exchange::notify notify{
+  midi2::ci::property_exchange::notify const notify{
       .chunk =
           midi2::ci::property_exchange::chunk_info{
               .number_of_chunks = from_le7(total_chunks),
@@ -1169,7 +1178,7 @@ TEST_F(CICreateMessage, PropertyExchangeNotify) {
           },
       .request = from_le7(request),
       .header = header,
-      .data = data,
+      .data = bytes(data),
   };
   EXPECT_THAT(make_message(hdr, notify), testing::ElementsAreArray(expected));
 }

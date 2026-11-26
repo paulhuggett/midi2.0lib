@@ -19,8 +19,12 @@
 #include <algorithm>
 #include <bit>
 #include <functional>
+#include <memory>
 #include <numeric>
+#include <string>
 #include <system_error>
+#include <type_traits>
+#include <utility>
 
 // google mock/test/fuzz
 #include <gmock/gmock.h>
@@ -89,114 +93,114 @@ using context_type = int;
 
 class UtilityMocks : public midi2::ump::dispatcher_backend::utility_pure<context_type> {
 public:
-  MOCK_METHOD(void, noop, (context_type), (override));
-  MOCK_METHOD(void, jr_clock, (context_type, midi2::ump::utility::jr_clock const&), (override));
-  MOCK_METHOD(void, jr_timestamp, (context_type, midi2::ump::utility::jr_timestamp const&), (override));
-  MOCK_METHOD(void, delta_clockstamp_tpqn, (context_type, midi2::ump::utility::delta_clockstamp_tpqn const&),
+  MOCK_METHOD(void, noop, (context_type&), (override));
+  MOCK_METHOD(void, jr_clock, (context_type&, midi2::ump::utility::jr_clock const&), (override));
+  MOCK_METHOD(void, jr_timestamp, (context_type&, midi2::ump::utility::jr_timestamp const&), (override));
+  MOCK_METHOD(void, delta_clockstamp_tpqn, (context_type&, midi2::ump::utility::delta_clockstamp_tpqn const&),
               (override));
-  MOCK_METHOD(void, delta_clockstamp, (context_type, midi2::ump::utility::delta_clockstamp const&), (override));
+  MOCK_METHOD(void, delta_clockstamp, (context_type&, midi2::ump::utility::delta_clockstamp const&), (override));
 
-  MOCK_METHOD(void, unknown, (context_type, std::span<std::uint32_t>), (override));
+  MOCK_METHOD(void, unknown, (context_type&, std::span<std::uint32_t>), (override));
 };
 class SystemMocks : public midi2::ump::dispatcher_backend::system_pure<context_type> {
 public:
-  MOCK_METHOD(void, midi_time_code, (context_type, midi2::ump::system::midi_time_code const&), (override));
-  MOCK_METHOD(void, song_position_pointer, (context_type, midi2::ump::system::song_position_pointer const&),
+  MOCK_METHOD(void, midi_time_code, (context_type&, midi2::ump::system::midi_time_code const&), (override));
+  MOCK_METHOD(void, song_position_pointer, (context_type&, midi2::ump::system::song_position_pointer const&),
               (override));
-  MOCK_METHOD(void, song_select, (context_type, midi2::ump::system::song_select const&), (override));
-  MOCK_METHOD(void, tune_request, (context_type, midi2::ump::system::tune_request const&), (override));
-  MOCK_METHOD(void, timing_clock, (context_type, midi2::ump::system::timing_clock const&), (override));
-  MOCK_METHOD(void, seq_start, (context_type, midi2::ump::system::sequence_start const&), (override));
-  MOCK_METHOD(void, seq_continue, (context_type, midi2::ump::system::sequence_continue const&), (override));
-  MOCK_METHOD(void, seq_stop, (context_type, midi2::ump::system::sequence_stop const&), (override));
-  MOCK_METHOD(void, active_sensing, (context_type, midi2::ump::system::active_sensing const&), (override));
-  MOCK_METHOD(void, reset, (context_type, midi2::ump::system::reset const&), (override));
+  MOCK_METHOD(void, song_select, (context_type&, midi2::ump::system::song_select const&), (override));
+  MOCK_METHOD(void, tune_request, (context_type&, midi2::ump::system::tune_request const&), (override));
+  MOCK_METHOD(void, timing_clock, (context_type&, midi2::ump::system::timing_clock const&), (override));
+  MOCK_METHOD(void, seq_start, (context_type&, midi2::ump::system::sequence_start const&), (override));
+  MOCK_METHOD(void, seq_continue, (context_type&, midi2::ump::system::sequence_continue const&), (override));
+  MOCK_METHOD(void, seq_stop, (context_type&, midi2::ump::system::sequence_stop const&), (override));
+  MOCK_METHOD(void, active_sensing, (context_type&, midi2::ump::system::active_sensing const&), (override));
+  MOCK_METHOD(void, reset, (context_type&, midi2::ump::system::reset const&), (override));
 };
 class M1CVMMocks : public midi2::ump::dispatcher_backend::m1cvm_pure<context_type> {
 public:
-  MOCK_METHOD(void, note_off, (context_type, midi2::ump::m1cvm::note_off const&), (override));
-  MOCK_METHOD(void, note_on, (context_type, midi2::ump::m1cvm::note_on const&), (override));
-  MOCK_METHOD(void, poly_pressure, (context_type, midi2::ump::m1cvm::poly_pressure const&), (override));
-  MOCK_METHOD(void, control_change, (context_type, midi2::ump::m1cvm::control_change const&), (override));
-  MOCK_METHOD(void, program_change, (context_type, midi2::ump::m1cvm::program_change const&), (override));
-  MOCK_METHOD(void, channel_pressure, (context_type, midi2::ump::m1cvm::channel_pressure const&), (override));
-  MOCK_METHOD(void, pitch_bend, (context_type, midi2::ump::m1cvm::pitch_bend const&), (override));
+  MOCK_METHOD(void, note_off, (context_type&, midi2::ump::m1cvm::note_off const&), (override));
+  MOCK_METHOD(void, note_on, (context_type&, midi2::ump::m1cvm::note_on const&), (override));
+  MOCK_METHOD(void, poly_pressure, (context_type&, midi2::ump::m1cvm::poly_pressure const&), (override));
+  MOCK_METHOD(void, control_change, (context_type&, midi2::ump::m1cvm::control_change const&), (override));
+  MOCK_METHOD(void, program_change, (context_type&, midi2::ump::m1cvm::program_change const&), (override));
+  MOCK_METHOD(void, channel_pressure, (context_type&, midi2::ump::m1cvm::channel_pressure const&), (override));
+  MOCK_METHOD(void, pitch_bend, (context_type&, midi2::ump::m1cvm::pitch_bend const&), (override));
 };
 class Data64Mocks : public midi2::ump::dispatcher_backend::data64_pure<context_type> {
 public:
-  MOCK_METHOD(void, sysex7_in_1, (context_type, midi2::ump::data64::sysex7_in_1 const&), (override));
-  MOCK_METHOD(void, sysex7_start, (context_type, midi2::ump::data64::sysex7_start const&), (override));
-  MOCK_METHOD(void, sysex7_continue, (context_type, midi2::ump::data64::sysex7_continue const&), (override));
-  MOCK_METHOD(void, sysex7_end, (context_type, midi2::ump::data64::sysex7_end const&), (override));
+  MOCK_METHOD(void, sysex7_in_1, (context_type&, midi2::ump::data64::sysex7_in_1 const&), (override));
+  MOCK_METHOD(void, sysex7_start, (context_type&, midi2::ump::data64::sysex7_start const&), (override));
+  MOCK_METHOD(void, sysex7_continue, (context_type&, midi2::ump::data64::sysex7_continue const&), (override));
+  MOCK_METHOD(void, sysex7_end, (context_type&, midi2::ump::data64::sysex7_end const&), (override));
 };
 class M2CVMMocks : public midi2::ump::dispatcher_backend::m2cvm_pure<context_type> {
 public:
-  MOCK_METHOD(void, note_off, (context_type, midi2::ump::m2cvm::note_off const&), (override));
-  MOCK_METHOD(void, note_on, (context_type, midi2::ump::m2cvm::note_on const&), (override));
-  MOCK_METHOD(void, poly_pressure, (context_type, midi2::ump::m2cvm::poly_pressure const&), (override));
-  MOCK_METHOD(void, program_change, (context_type, midi2::ump::m2cvm::program_change const&), (override));
-  MOCK_METHOD(void, channel_pressure, (context_type, midi2::ump::m2cvm::channel_pressure const&), (override));
+  MOCK_METHOD(void, note_off, (context_type&, midi2::ump::m2cvm::note_off const&), (override));
+  MOCK_METHOD(void, note_on, (context_type&, midi2::ump::m2cvm::note_on const&), (override));
+  MOCK_METHOD(void, poly_pressure, (context_type&, midi2::ump::m2cvm::poly_pressure const&), (override));
+  MOCK_METHOD(void, program_change, (context_type&, midi2::ump::m2cvm::program_change const&), (override));
+  MOCK_METHOD(void, channel_pressure, (context_type&, midi2::ump::m2cvm::channel_pressure const&), (override));
 
-  MOCK_METHOD(void, rpn_per_note_controller, (context_type, midi2::ump::m2cvm::rpn_per_note_controller const&),
+  MOCK_METHOD(void, rpn_per_note_controller, (context_type&, midi2::ump::m2cvm::rpn_per_note_controller const&),
               (override));
-  MOCK_METHOD(void, nrpn_per_note_controller, (context_type, midi2::ump::m2cvm::nrpn_per_note_controller const&),
+  MOCK_METHOD(void, nrpn_per_note_controller, (context_type&, midi2::ump::m2cvm::nrpn_per_note_controller const&),
               (override));
-  MOCK_METHOD(void, rpn_controller, (context_type, midi2::ump::m2cvm::rpn_controller const&), (override));
-  MOCK_METHOD(void, nrpn_controller, (context_type, midi2::ump::m2cvm::nrpn_controller const&), (override));
-  MOCK_METHOD(void, rpn_relative_controller, (context_type, midi2::ump::m2cvm::rpn_relative_controller const&),
+  MOCK_METHOD(void, rpn_controller, (context_type&, midi2::ump::m2cvm::rpn_controller const&), (override));
+  MOCK_METHOD(void, nrpn_controller, (context_type&, midi2::ump::m2cvm::nrpn_controller const&), (override));
+  MOCK_METHOD(void, rpn_relative_controller, (context_type&, midi2::ump::m2cvm::rpn_relative_controller const&),
               (override));
-  MOCK_METHOD(void, nrpn_relative_controller, (context_type, midi2::ump::m2cvm::nrpn_relative_controller const&),
+  MOCK_METHOD(void, nrpn_relative_controller, (context_type&, midi2::ump::m2cvm::nrpn_relative_controller const&),
               (override));
 
-  MOCK_METHOD(void, per_note_management, (context_type, midi2::ump::m2cvm::per_note_management const&), (override));
-  MOCK_METHOD(void, control_change, (context_type, midi2::ump::m2cvm::control_change const&), (override));
-  MOCK_METHOD(void, pitch_bend, (context_type, midi2::ump::m2cvm::pitch_bend const&), (override));
-  MOCK_METHOD(void, per_note_pitch_bend, (context_type, midi2::ump::m2cvm::per_note_pitch_bend const&), (override));
+  MOCK_METHOD(void, per_note_management, (context_type&, midi2::ump::m2cvm::per_note_management const&), (override));
+  MOCK_METHOD(void, control_change, (context_type&, midi2::ump::m2cvm::control_change const&), (override));
+  MOCK_METHOD(void, pitch_bend, (context_type&, midi2::ump::m2cvm::pitch_bend const&), (override));
+  MOCK_METHOD(void, per_note_pitch_bend, (context_type&, midi2::ump::m2cvm::per_note_pitch_bend const&), (override));
 };
 class Data128Mocks : public midi2::ump::dispatcher_backend::data128_pure<context_type> {
 public:
-  MOCK_METHOD(void, sysex8_in_1, (context_type, midi2::ump::data128::sysex8_in_1 const&), (override));
-  MOCK_METHOD(void, sysex8_start, (context_type, midi2::ump::data128::sysex8_start const&), (override));
-  MOCK_METHOD(void, sysex8_continue, (context_type, midi2::ump::data128::sysex8_continue const&), (override));
-  MOCK_METHOD(void, sysex8_end, (context_type, midi2::ump::data128::sysex8_end const&), (override));
-  MOCK_METHOD(void, mds_header, (context_type, midi2::ump::data128::mds_header const&), (override));
-  MOCK_METHOD(void, mds_payload, (context_type, midi2::ump::data128::mds_payload const&), (override));
+  MOCK_METHOD(void, sysex8_in_1, (context_type&, midi2::ump::data128::sysex8_in_1 const&), (override));
+  MOCK_METHOD(void, sysex8_start, (context_type&, midi2::ump::data128::sysex8_start const&), (override));
+  MOCK_METHOD(void, sysex8_continue, (context_type&, midi2::ump::data128::sysex8_continue const&), (override));
+  MOCK_METHOD(void, sysex8_end, (context_type&, midi2::ump::data128::sysex8_end const&), (override));
+  MOCK_METHOD(void, mds_header, (context_type&, midi2::ump::data128::mds_header const&), (override));
+  MOCK_METHOD(void, mds_payload, (context_type&, midi2::ump::data128::mds_payload const&), (override));
 };
 class UMPStreamMocks : public midi2::ump::dispatcher_backend::stream_pure<context_type> {
 public:
-  MOCK_METHOD(void, endpoint_discovery, (context_type, midi2::ump::stream::endpoint_discovery const&), (override));
-  MOCK_METHOD(void, endpoint_info_notification, (context_type, midi2::ump::stream::endpoint_info_notification const&),
+  MOCK_METHOD(void, endpoint_discovery, (context_type&, midi2::ump::stream::endpoint_discovery const&), (override));
+  MOCK_METHOD(void, endpoint_info_notification, (context_type&, midi2::ump::stream::endpoint_info_notification const&),
               (override));
   MOCK_METHOD(void, device_identity_notification,
-              (context_type, midi2::ump::stream::device_identity_notification const&), (override));
-  MOCK_METHOD(void, endpoint_name_notification, (context_type, midi2::ump::stream::endpoint_name_notification const&),
+              (context_type&, midi2::ump::stream::device_identity_notification const&), (override));
+  MOCK_METHOD(void, endpoint_name_notification, (context_type&, midi2::ump::stream::endpoint_name_notification const&),
               (override));
   MOCK_METHOD(void, product_instance_id_notification,
-              (context_type, midi2::ump::stream::product_instance_id_notification const&), (override));
+              (context_type&, midi2::ump::stream::product_instance_id_notification const&), (override));
 
-  MOCK_METHOD(void, jr_configuration_request, (context_type, midi2::ump::stream::jr_configuration_request const&),
+  MOCK_METHOD(void, jr_configuration_request, (context_type&, midi2::ump::stream::jr_configuration_request const&),
               (override));
   MOCK_METHOD(void, jr_configuration_notification,
-              (context_type, midi2::ump::stream::jr_configuration_notification const&), (override));
+              (context_type&, midi2::ump::stream::jr_configuration_notification const&), (override));
 
-  MOCK_METHOD(void, function_block_discovery, (context_type, midi2::ump::stream::function_block_discovery const&),
+  MOCK_METHOD(void, function_block_discovery, (context_type&, midi2::ump::stream::function_block_discovery const&),
               (override));
   MOCK_METHOD(void, function_block_info_notification,
-              (context_type, midi2::ump::stream::function_block_info_notification const&), (override));
+              (context_type&, midi2::ump::stream::function_block_info_notification const&), (override));
   MOCK_METHOD(void, function_block_name_notification,
-              (context_type, midi2::ump::stream::function_block_name_notification const&), (override));
+              (context_type&, midi2::ump::stream::function_block_name_notification const&), (override));
 
-  MOCK_METHOD(void, start_of_clip, (context_type, midi2::ump::stream::start_of_clip const&), (override));
-  MOCK_METHOD(void, end_of_clip, (context_type, midi2::ump::stream::end_of_clip const&), (override));
+  MOCK_METHOD(void, start_of_clip, (context_type&, midi2::ump::stream::start_of_clip const&), (override));
+  MOCK_METHOD(void, end_of_clip, (context_type&, midi2::ump::stream::end_of_clip const&), (override));
 };
 class FlexDataMocks : public midi2::ump::dispatcher_backend::flex_data_pure<context_type> {
 public:
-  MOCK_METHOD(void, set_tempo, (context_type, midi2::ump::flex_data::set_tempo const&), (override));
-  MOCK_METHOD(void, set_time_signature, (context_type, midi2::ump::flex_data::set_time_signature const&), (override));
-  MOCK_METHOD(void, set_metronome, (context_type, midi2::ump::flex_data::set_metronome const&), (override));
-  MOCK_METHOD(void, set_key_signature, (context_type, midi2::ump::flex_data::set_key_signature const&), (override));
-  MOCK_METHOD(void, set_chord_name, (context_type, midi2::ump::flex_data::set_chord_name const&), (override));
-  MOCK_METHOD(void, text, (context_type, midi2::ump::flex_data::text_common const&), (override));
+  MOCK_METHOD(void, set_tempo, (context_type&, midi2::ump::flex_data::set_tempo const&), (override));
+  MOCK_METHOD(void, set_time_signature, (context_type&, midi2::ump::flex_data::set_time_signature const&), (override));
+  MOCK_METHOD(void, set_metronome, (context_type&, midi2::ump::flex_data::set_metronome const&), (override));
+  MOCK_METHOD(void, set_key_signature, (context_type&, midi2::ump::flex_data::set_key_signature const&), (override));
+  MOCK_METHOD(void, set_chord_name, (context_type&, midi2::ump::flex_data::set_chord_name const&), (override));
+  MOCK_METHOD(void, text, (context_type&, midi2::ump::flex_data::text_common const&), (override));
 };
 
 }  // end anonymous namespace
@@ -942,6 +946,171 @@ TEST_F(UMPDispatcherFlexData, Text) {
   message[11] = '\0';
   EXPECT_CALL(config_.flex, text(config_.context, message)).Times(1);
   this->apply(message);
+}
+
+// A context type which can be neither copied nor moved.
+struct pinned_context {
+  pinned_context() noexcept = default;
+  pinned_context(pinned_context const&) = delete;
+  pinned_context(pinned_context&&) noexcept = delete;
+  ~pinned_context() noexcept = default;
+  pinned_context& operator=(pinned_context const&) = delete;
+  pinned_context& operator=(pinned_context&&) noexcept = delete;
+
+  int calls = 0;
+};
+
+namespace backend = midi2::ump::dispatcher_backend;
+static_assert(backend::utility<backend::utility_null<pinned_context>, pinned_context>);
+static_assert(backend::utility<backend::utility_pure<pinned_context>, pinned_context>);
+static_assert(backend::utility<backend::utility_base<pinned_context>, pinned_context>);
+static_assert(backend::utility<backend::utility_function<pinned_context>, pinned_context>);
+static_assert(backend::system<backend::system_null<pinned_context>, pinned_context>);
+static_assert(backend::system<backend::system_pure<pinned_context>, pinned_context>);
+static_assert(backend::system<backend::system_base<pinned_context>, pinned_context>);
+static_assert(backend::system<backend::system_function<pinned_context>, pinned_context>);
+static_assert(backend::m1cvm<backend::m1cvm_null<pinned_context>, pinned_context>);
+static_assert(backend::m1cvm<backend::m1cvm_pure<pinned_context>, pinned_context>);
+static_assert(backend::m1cvm<backend::m1cvm_base<pinned_context>, pinned_context>);
+static_assert(backend::m1cvm<backend::m1cvm_function<pinned_context>, pinned_context>);
+static_assert(backend::data64<backend::data64_null<pinned_context>, pinned_context>);
+static_assert(backend::data64<backend::data64_pure<pinned_context>, pinned_context>);
+static_assert(backend::data64<backend::data64_base<pinned_context>, pinned_context>);
+static_assert(backend::data64<backend::data64_function<pinned_context>, pinned_context>);
+static_assert(backend::m2cvm<backend::m2cvm_null<pinned_context>, pinned_context>);
+static_assert(backend::m2cvm<backend::m2cvm_pure<pinned_context>, pinned_context>);
+static_assert(backend::m2cvm<backend::m2cvm_base<pinned_context>, pinned_context>);
+static_assert(backend::m2cvm<backend::m2cvm_function<pinned_context>, pinned_context>);
+static_assert(backend::data128<backend::data128_null<pinned_context>, pinned_context>);
+static_assert(backend::data128<backend::data128_pure<pinned_context>, pinned_context>);
+static_assert(backend::data128<backend::data128_base<pinned_context>, pinned_context>);
+static_assert(backend::data128<backend::data128_function<pinned_context>, pinned_context>);
+static_assert(backend::stream<backend::stream_null<pinned_context>, pinned_context>);
+static_assert(backend::stream<backend::stream_pure<pinned_context>, pinned_context>);
+static_assert(backend::stream<backend::stream_base<pinned_context>, pinned_context>);
+static_assert(backend::stream<backend::stream_function<pinned_context>, pinned_context>);
+static_assert(backend::flex_data<backend::flex_data_null<pinned_context>, pinned_context>);
+static_assert(backend::flex_data<backend::flex_data_pure<pinned_context>, pinned_context>);
+static_assert(backend::flex_data<backend::flex_data_base<pinned_context>, pinned_context>);
+static_assert(backend::flex_data<backend::flex_data_function<pinned_context>, pinned_context>);
+
+// The handlers are passed a reference to the context so it cannot be const unless they accept a const reference.
+static_assert(midi2::ump::ump_dispatcher_config<midi2::ump::function_config<int>&>);
+static_assert(!midi2::ump::ump_dispatcher_config<midi2::ump::function_config<int> const&>);
+static_assert(midi2::ump::ump_dispatcher_config<midi2::ump::function_config<int const> const&>);
+
+// A backend based on virtual functions.
+struct count_note_on : backend::m1cvm_base<pinned_context> {
+  void note_on(pinned_context& c, midi2::ump::m1cvm::note_on const&) override { ++c.calls; }
+};
+struct pinned_config {
+  pinned_context context;
+  backend::utility_function<pinned_context> utility;
+  [[no_unique_address, maybe_unused]] backend::system_null<pinned_context> system;
+  count_note_on m1cvm;
+  [[no_unique_address, maybe_unused]] backend::data64_null<pinned_context> data64;
+  [[no_unique_address, maybe_unused]] backend::m2cvm_null<pinned_context> m2cvm;
+  [[no_unique_address, maybe_unused]] backend::data128_null<pinned_context> data128;
+  [[no_unique_address, maybe_unused]] backend::stream_null<pinned_context> stream;
+  [[no_unique_address, maybe_unused]] backend::flex_data_null<pinned_context> flex;
+};
+
+// NOLINTNEXTLINE
+TEST(UMPDispatcherContext, HandlersReceiveAReference) {
+  pinned_config config;
+  pinned_context const* noop_context = nullptr;
+  config.utility.on_noop([&noop_context](pinned_context& c) {
+    ++c.calls;
+    noop_context = &c;
+  });
+  midi2::ump::ump_dispatcher<std::reference_wrapper<pinned_config>> dispatcher{std::ref(config)};
+  auto const dispatch = [&dispatcher](std::uint32_t const v) {
+    dispatcher.dispatch(v);
+    return false;
+  };
+  midi2::ump::apply(midi2::ump::utility::noop{}, dispatch);
+  EXPECT_EQ(noop_context, &config.context);
+  EXPECT_EQ(config.context.calls, 1);
+  midi2::ump::apply(midi2::ump::m1cvm::note_on{}.note(60).velocity(127), dispatch);
+  EXPECT_EQ(config.context.calls, 2);
+}
+// NOLINTNEXTLINE
+TEST(UMPDispatcherContext, ChangesArePreserved) {
+  auto dispatcher = midi2::ump::make_ump_function_dispatcher(0);
+  dispatcher.config().utility.on_noop([](int& c) { ++c; });
+  auto const dispatch = [&dispatcher](std::uint32_t const v) {
+    dispatcher.dispatch(v);
+    return false;
+  };
+  midi2::ump::apply(midi2::ump::utility::noop{}, dispatch);
+  midi2::ump::apply(midi2::ump::utility::noop{}, dispatch);
+  EXPECT_EQ(dispatcher.config().context, 2);
+}
+
+// A context type with a constructor that takes several arguments. It can be neither copied nor moved, so must be
+// constructed in place.
+class in_place_context : public pinned_context {
+public:
+  in_place_context(std::string name, std::unique_ptr<int> number)
+      : name_{std::move(name)}, number_{std::move(number)} {}
+
+  [[nodiscard]] std::string const& name() const noexcept { return name_; }
+  [[nodiscard]] int number() const { return *number_; }
+
+private:
+  std::string name_;
+  std::unique_ptr<int> number_;
+};
+
+// NOLINTNEXTLINE
+TEST(UMPDispatcherInPlace, ContextArguments) {
+  // The unique_ptr<> argument can only be moved, so this also checks that the arguments are perfectly forwarded.
+  midi2::ump::ump_dispatcher<midi2::ump::function_config<in_place_context>> dispatcher{std::in_place, "name",
+                                                                                       std::make_unique<int>(42)};
+  EXPECT_EQ(dispatcher.config().context.name(), "name");
+  EXPECT_EQ(dispatcher.config().context.number(), 42);
+
+  in_place_context const* noop_context = nullptr;
+  dispatcher.config().utility.on_noop([&noop_context](in_place_context& c) {
+    ++c.calls;
+    noop_context = &c;
+  });
+  midi2::ump::apply(midi2::ump::utility::noop{}, [&dispatcher](std::uint32_t const v) {
+    dispatcher.dispatch(v);
+    return false;
+  });
+  EXPECT_EQ(noop_context, &dispatcher.config().context);
+  EXPECT_EQ(dispatcher.config().context.calls, 1);
+}
+// NOLINTNEXTLINE
+TEST(UMPDispatcherInPlace, NoArguments) {
+  midi2::ump::ump_dispatcher<midi2::ump::function_config<int>> const a{std::in_place};
+  EXPECT_EQ(a.config().context, 0);
+  midi2::ump::ump_dispatcher<midi2::ump::function_config<pinned_context>> const b{std::in_place};
+  EXPECT_EQ(b.config().context.calls, 0);
+}
+// NOLINTNEXTLINE
+TEST(UMPDispatcherInPlace, ReferenceWrapper) {
+  auto context = std::string{"name"};
+  using config = midi2::ump::function_config<std::reference_wrapper<std::string>>;
+  midi2::ump::ump_dispatcher<config> const dispatcher{std::in_place, context};
+  EXPECT_EQ(&dispatcher.config().context.get(), &context);
+}
+// NOLINTNEXTLINE
+TEST(UMPDispatcherInPlace, Constraints) {
+  using config = midi2::ump::function_config<in_place_context>;
+  using dispatcher_type = midi2::ump::ump_dispatcher<config>;
+  using number = std::unique_ptr<int>;
+  static_assert(std::is_constructible_v<dispatcher_type, std::in_place_t, char const*, number>);
+  // The arguments must be accepted by the context's constructor.
+  static_assert(!std::is_constructible_v<dispatcher_type, std::in_place_t>);
+  static_assert(!std::is_constructible_v<dispatcher_type, std::in_place_t, char const*>);
+  static_assert(!std::is_constructible_v<dispatcher_type, std::in_place_t, char const*, number&>);
+  // The tag is required.
+  static_assert(!std::is_constructible_v<dispatcher_type, char const*, number>);
+  // A reference to a configuration has no context to be constructed.
+  static_assert(!std::is_constructible_v<midi2::ump::ump_dispatcher<std::reference_wrapper<config>>, std::in_place_t,
+                                         char const*, number>);
 }
 
 struct default_config {
