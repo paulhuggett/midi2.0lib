@@ -44,6 +44,10 @@ namespace midi2 {
 #endif
 }
 
+/// \brief Satisfied if the type T is the same as any of the types in the pack Types.
+template <typename T, typename... Types>
+concept one_of = (std::same_as<T, Types> || ...);
+
 /// Converts a suitable enumeration to std::byte.
 ///
 /// \param e  The enumeration value to convert

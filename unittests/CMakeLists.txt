@@ -28,6 +28,7 @@ add_executable (m2unittests
   test_ump_to_midi2.cpp
   test_ump_types.cpp
   test_usbm1_to_bytestream.cpp
+  test_utils.cpp
 )
 target_compile_definitions(m2unittests PRIVATE MIDI2_FUZZTEST=$<BOOL:${MIDI2_FUZZTEST}>)
 target_link_libraries(m2unittests PRIVATE midi2)

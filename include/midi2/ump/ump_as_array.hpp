@@ -368,6 +368,15 @@ private:
   std::size_t index_ = 0;
 };
 
+/// \brief The type of the value produced by applying a projection to an element of a range, with any reference and
+///   cv-qualifiers removed. The data() member functions which take a range and a projection use this to check the
+///   values that they will store: the range's own elements need not be integral if the projection converts them.
+///
+/// \tparam Range  An input range type.
+/// \tparam Proj  The type of a projection which can be applied to the elements of \p Range.
+template <std::ranges::input_range Range, typename Proj>
+using projected_value_t = std::remove_cvref_t<std::indirect_result_t<Proj&, std::ranges::iterator_t<Range>>>;
+
 /// \brief Implements the data() member functions which set the elements of a message that is accessible as an array.
 ///
 /// \tparam Message  The message type.
@@ -395,14 +404,14 @@ template <typename Message, unsigned Bits> struct data_helper {
     return index;
   }
   /// \brief Sets the elements of a message from a range.
-  /// \tparam Range  An input range type with integral elements.
+  /// \tparam Range  An input range type whose elements are integral once \p Proj has been applied.
   /// \tparam Proj  The type of the projection.
   /// \param message  The message to be modified.
   /// \param range  The values to be stored. Values beyond the capacity of the message are ignored.
   /// \param proj  The projection to apply to each element of \p range.
   /// \returns The number of elements stored.
   template <std::ranges::input_range Range, typename Proj = std::identity>
-    requires std::is_integral_v<std::remove_cvref_t<std::ranges::range_value_t<Range>>>
+    requires std::is_integral_v<projected_value_t<Range, Proj>>
   static constexpr std::size_t data(Message& message, Range&& range, Proj proj = {}) {
     auto index = std::size_t{0};
     std::ranges::for_each(

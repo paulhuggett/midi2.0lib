@@ -20,9 +20,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <ostream>
 #include <ranges>
 #include <span>
+#include <vector>
 
 // google mock/test/fuzz
 #include <gmock/gmock.h>
@@ -1357,5 +1359,30 @@ TEST_F(CICreateMessage, ProcessInquiryMidiMessageReportEnd) {
   EXPECT_THAT(make_message(hdr, midi2::ci::process_inquiry::midi_message_report_end{}),
               testing::ElementsAreArray(expected));
 }
+
+// ci_message
+static_assert(midi2::ci::ci_message<midi2::ci::discovery>);
+static_assert(midi2::ci::ci_message<midi2::ci::invalidate_muid>);
+static_assert(midi2::ci::ci_message<midi2::ci::endpoint_reply>);
+static_assert(midi2::ci::ci_message<midi2::ci::ack>);
+static_assert(midi2::ci::ci_message<midi2::ci::profile_configuration::inquiry_reply>);
+static_assert(midi2::ci::ci_message<midi2::ci::property_exchange::get_reply>);
+static_assert(midi2::ci::ci_message<midi2::ci::process_inquiry::midi_message_report_end>);
+static_assert(!midi2::ci::ci_message<int>);
+static_assert(!midi2::ci::ci_message<midi2::ci::header>, "The header is not a message");
+static_assert(!midi2::ci::ci_message<midi2::ci::packed::discovery_v1>, "A packed type is not a message");
+
+// The constraints on create_message().
+template <typename T>
+concept can_create = requires(std::back_insert_iterator<std::vector<std::byte>> out, midi2::ci::header const& hdr,
+                              T const& t) { midi2::ci::create_message(out, midi2::ci::trivial_sentinel{}, hdr, t); };
+static_assert(can_create<midi2::ci::discovery>, "A message with a fixed-size body");
+static_assert(can_create<midi2::ci::invalidate_muid>, "A message with a fixed-size body");
+static_assert(can_create<midi2::ci::nak>, "A message with its own overload and packed layouts");
+static_assert(can_create<midi2::ci::endpoint_reply>, "A message with its own overload");
+static_assert(can_create<midi2::ci::property_exchange::get_reply>, "A message with its own overload");
+static_assert(!can_create<int>);
+static_assert(!can_create<midi2::ci::header>, "The header is not a message");
+static_assert(!can_create<midi2::ci::packed::discovery_v1>, "A packed type is not a message");
 
 }  // end anonymous namespace

@@ -39,6 +39,7 @@
 #include "midi2/adt/uinteger.hpp"
 #include "midi2/ump/ump_as_array.hpp"
 #include "midi2/ump/ump_utils.hpp"
+#include "midi2/utils.hpp"
 
 namespace midi2::ump {
 
@@ -357,6 +358,33 @@ protected:
 
 }  // end namespace details
 
+namespace details {
+
+/// \brief Satisfied if element Index of the tuple-like type T is derived from details::word_base.
+template <typename T, std::size_t Index>
+concept word_at = std::derived_from<std::remove_cvref_t<decltype(get<Index>(std::declval<T const&>()))>, word_base>;
+
+/// \brief True if the elements of the tuple-like type T whose indices are given by the std::index_sequence<> Indices
+///   are all derived from details::word_base. This primary template, false, is used if Indices is not a
+///   std::index_sequence<>.
+template <typename T, typename Indices> inline constexpr bool all_words = false;
+/// \brief True if the elements of the tuple-like type T with the indices in the pack Indices are all derived from
+///   details::word_base.
+template <typename T, std::size_t... Indices>
+inline constexpr bool all_words<T, std::index_sequence<Indices...>> = (word_at<T, Indices> && ...);
+
+}  // end namespace details
+
+/// \brief Satisfied by the UMP message types: tuple-like types of between one and four words (that is, up to 128 bits),
+///   each of which is derived from details::word_base. Values of these types can be passed to apply() and check().
+///
+/// The std::tuple_size check comes first so that a type which isn't tuple-like is rejected before the remaining
+/// constraints, which use std::tuple_size_v<T> and get<>(), are considered: for such a type they would be hard errors.
+template <typename T>
+concept ump_message =
+    requires { std::tuple_size<T>::value; } && std::tuple_size_v<T> >= 1 && std::tuple_size_v<T> <= 4 &&
+    details::all_words<T, std::make_index_sequence<std::tuple_size_v<T>>>;
+
 /// Calls the supplied function for each of the words in a UMP message of type \p T.
 ///
 /// Words are processed in order, starting from index 0. If the function returns a value which converts to
@@ -366,15 +394,13 @@ protected:
 /// \tparam T  A message type. One of the types defined in the midi2::ump namespace.
 /// \tparam Function  A function accepting a std::uint32_t message word. Returns a value which can be cast to
 ///   bool.
-/// \tparam Index  The index at which processing should start.
+/// \tparam Index  The index at which processing should start. Must be less than the number of words in \p T.
 /// \param message   An instance of one of the UMP message types.
 /// \param function  The function to be called for each member of the UMP message type.
 /// \returns  The result of the calling \p function which was converted to boolean true, or the
 ///   last result received.
-template <typename T, typename Function, std::size_t Index = 0>
-  requires(Index < std::tuple_size_v<T> &&
-           std::derived_from<std::remove_cvref_t<decltype(get<Index>(T{}))>, details::word_base> &&
-           std::is_constructible_v<bool, std::invoke_result_t<Function, std::uint32_t>>)
+template <ump_message T, std::invocable<std::uint32_t> Function, std::size_t Index = 0>
+  requires(Index < std::tuple_size_v<T> && std::is_constructible_v<bool, std::invoke_result_t<Function, std::uint32_t>>)
 constexpr std::invoke_result_t<Function, std::uint32_t> apply(T const& message, Function function) {
   auto result = function(static_cast<std::uint32_t>(get<Index>(message)));
   if (!bool{result}) {
@@ -390,12 +416,11 @@ constexpr std::invoke_result_t<Function, std::uint32_t> apply(T const& message, 
 /// This can be used to validate the internal consistency of a complete UMP message.
 ///
 /// \tparam T  A message type. One of the types defined in the midi2::ump namespace.
-/// \tparam Index  The index at which processing should start.
+/// \tparam Index  The index at which processing should start. Must be less than the number of words in \p T.
 /// \param message   An instance of one of the UMP message types.
 /// \returns  True if each of the check() functions returns true, false otherwise.
-template <typename T, std::size_t Index = 0>
-  requires(Index < std::tuple_size_v<T> &&
-           std::derived_from<std::remove_cvref_t<decltype(get<0>(T{}))>, details::word_base>)
+template <ump_message T, std::size_t Index = 0>
+  requires(Index < std::tuple_size_v<T>)
 constexpr bool check(T const& message) {
   if (!get<Index>(message).check()) {
     return false;
@@ -2846,13 +2871,13 @@ public:
 
   /// Copies data bytes from a range into the message. The number_of_bytes field is set to the number of values
   ///   copied.
-  /// \tparam Range  An input range whose elements are integral values.
+  /// \tparam Range  An input range whose elements are integral values once \p Proj has been applied.
   /// \tparam Proj  The type of the projection applied to each element of the range.
   /// \param range  The data bytes to be copied. At most max_size() values are copied.
   /// \param proj  A projection applied to each element of the range.
   /// \returns *this
   template <std::ranges::input_range Range, typename Proj = std::identity>
-    requires std::is_integral_v<std::remove_cvref_t<std::ranges::range_value_t<Range>>>
+    requires std::is_integral_v<::midi2::ump::details::projected_value_t<Range, Proj>>
   constexpr sysex7& data(Range&& range, Proj proj = {}) {
     auto const index = ::midi2::ump::details::data_helper<sysex7, 7U>::data(*this, std::forward<Range>(range), proj);
     return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index));
@@ -2910,6 +2935,11 @@ using sysex7_start = details::sysex7<mt::data64::sysex7_start>;
 using sysex7_continue = details::sysex7<mt::data64::sysex7_continue>;
 /// A message which signals the end of a series of sysex7_start and sysex7_continue messages.
 using sysex7_end = details::sysex7<mt::data64::sysex7_end>;
+
+/// \brief Satisfied if the type T is one of the four System Exclusive (7-Bit) message types: sysex7_in_1,
+///   sysex7_start, sysex7_continue, and sysex7_end.
+template <typename T>
+concept sysex7_message = one_of<T, sysex7_in_1, sysex7_start, sysex7_continue, sysex7_end>;
 
 }  // namespace midi2::ump::data64
 
@@ -9241,13 +9271,13 @@ public:
   }
 
   /// Copies characters from a range into the message. Any unused bytes are set to zero.
-  /// \tparam Range  An input range whose elements are integral values.
+  /// \tparam Range  An input range whose elements convert to char8_t once \p Proj has been applied.
   /// \tparam Proj  The type of the projection applied to each element of the range.
   /// \param range  The characters to be copied. At most max_size() values are copied.
   /// \param proj  A projection applied to each element of the range.
   /// \returns *this
   template <std::ranges::input_range Range, typename Proj = std::identity>
-    requires std::is_convertible_v<std::remove_cvref_t<std::ranges::range_value_t<Range>>, char8_t>
+    requires std::is_convertible_v<::midi2::ump::details::projected_value_t<Range, Proj>, char8_t>
   constexpr text_common& data(Range&& range, Proj proj = {}) {
     auto const index = details::data_helper<text_common, 8U>::data(*this, std::forward<Range>(range), proj);
     auto const begin = this->begin();
@@ -9754,13 +9784,13 @@ public:
 
   /// Copies data bytes from a range into the message. The number_of_bytes field is set to the number of values
   ///   copied plus one for the stream ID.
-  /// \tparam Range  An input range whose elements are integral values.
+  /// \tparam Range  An input range whose elements are integral values once \p Proj has been applied.
   /// \tparam Proj  The type of the projection applied to each element of the range.
   /// \param range  The data bytes to be copied. At most max_size() values are copied.
   /// \param proj  A projection applied to each element of the range.
   /// \returns *this
   template <std::ranges::input_range Range, typename Proj = std::identity>
-    requires std::is_integral_v<std::remove_cvref_t<std::ranges::range_value_t<Range>>>
+    requires std::is_integral_v<::midi2::ump::details::projected_value_t<Range, Proj>>
   constexpr sysex8& data(Range&& range, Proj proj = {}) {
     auto const index = ::midi2::ump::details::data_helper<sysex8, 8U>::data(*this, std::forward<Range>(range), proj);
     return this->number_of_bytes(static_cast<word0::number_of_bytes::uinteger>(index + 1U));
