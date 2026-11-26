@@ -509,7 +509,8 @@ TEST(UMPTypesTextCommon, DataFromStringViewStopsAtEndOfView) {
 TEST(UMPTypesTextCommon, DataFromRangeWithProjection) {
   using text_common = midi2::ump::flex_data::text_common;
   constexpr std::array src{std::byte{'a'}, std::byte{'b'}};
-  auto const message = text_common{}.group(0).data(src, [](std::byte const b) { return static_cast<char8_t>(b); });
+  auto const message = text_common{}.group(0).data(
+      src, [](std::byte const b) { return static_cast<char8_t>(std::to_integer<std::uint8_t>(b)); });
   EXPECT_EQ(message.size(), 2U);
   EXPECT_EQ(message[0], 'a');
   EXPECT_EQ(message[1], 'b');
