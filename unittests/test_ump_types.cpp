@@ -716,7 +716,7 @@ struct apply_bool {
 };
 /// A function for apply() whose result does not convert to bool.
 struct apply_void {
-  constexpr void operator()(std::uint32_t) const noexcept {}
+  constexpr void operator()(std::uint32_t) const noexcept { /* do nothing */ }
 };
 template <typename T, typename Function>
 concept can_apply = requires(T const& t, Function f) { midi2::ump::apply(t, f); };
@@ -748,7 +748,7 @@ struct byte_to_uint8 {
 };
 /// A projection whose result is neither integral nor convertible to char8_t.
 struct to_void {
-  constexpr void operator()(std::byte) const noexcept {}
+  constexpr void operator()(std::byte) const noexcept { /* do nothing */ }
 };
 using byte_array = std::array<std::byte, 2>;
 static_assert(can_set_data<midi2::ump::data64::sysex7_in_1, byte_array, byte_to_uint8>);
