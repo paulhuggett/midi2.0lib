@@ -13,6 +13,13 @@
 
 #include "midi2/ump/ump_types.hpp"
 
+// Standard library
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <ranges>
+#include <tuple>
+
 // Google test
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -93,6 +100,23 @@ TEST(UMPTypesSysex7, Range) {
       midi2::ump::data64::sysex7_in_1{}.group(0).number_of_bytes(4).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
   constexpr std::array values{0x7E, 0x7F, 0x07, 0x0D};
   constexpr auto message2 = midi2::ump::data64::sysex7_in_1{}.group(0).data(values);
+  EXPECT_EQ(message, message2);
+}
+TEST(UMPTypesSysex7, RangeWithProjection) {
+  // The elements of the range are std::byte, which is not integral: the projection converts them.
+  constexpr auto message =
+      midi2::ump::data64::sysex7_in_1{}.group(0).number_of_bytes(4).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
+  constexpr std::array values{std::byte{0x7E}, std::byte{0x7F}, std::byte{0x07}, std::byte{0x0D}};
+  constexpr auto message2 = midi2::ump::data64::sysex7_in_1{}.group(0).data(
+      values, [](std::byte const b) { return std::to_integer<std::uint8_t>(b); });
+  EXPECT_EQ(message, message2);
+}
+TEST(UMPTypesSysex7, TransformedRange) {
+  constexpr auto message =
+      midi2::ump::data64::sysex7_in_1{}.group(0).number_of_bytes(4).data0(0x7E).data1(0x7F).data2(0x07).data3(0x0D);
+  constexpr std::array values{std::byte{0x7E}, std::byte{0x7F}, std::byte{0x07}, std::byte{0x0D}};
+  constexpr auto message2 = midi2::ump::data64::sysex7_in_1{}.group(0).data(
+      values | std::views::transform([](std::byte const b) { return std::to_integer<std::uint8_t>(b); }));
   EXPECT_EQ(message, message2);
 }
 TEST(UMPTypesSysex7, IteratorAssignData) {
@@ -417,6 +441,17 @@ TEST(UMPTypesSysex8, DataFromRangeSetsNumberOfBytes) {
   EXPECT_EQ(message2.number_of_bytes(), 4U);
   EXPECT_EQ(message2.size(), 3U);
 }
+TEST(UMPTypesSysex8, DataFromRangeWithProjection) {
+  using sysex8_in_1 = midi2::ump::data128::sysex8_in_1;
+  constexpr std::array src{std::byte{0x01}, std::byte{0x02}, std::byte{0xFF}};
+  auto const message =
+      sysex8_in_1{}.group(0).data(src, [](std::byte const b) { return std::to_integer<std::uint8_t>(b); });
+  EXPECT_EQ(message.number_of_bytes(), 4U);
+  ASSERT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[0], 0x01U);
+  EXPECT_EQ(message[1], 0x02U);
+  EXPECT_EQ(message[2], 0xFFU);
+}
 
 TEST(UMPTypesTextCommon, InitializerList) {
   using text_common = midi2::ump::flex_data::text_common;
@@ -466,6 +501,15 @@ TEST(UMPTypesTextCommon, DataFromStringViewStopsAtEndOfView) {
   // A const lvalue selects the data(std::u8string_view const&) overload rather than the range overload.
   constexpr auto view = u8"abcdef"sv.substr(0, 2);
   auto const message = text_common{}.group(0).data(view);
+  EXPECT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], 'a');
+  EXPECT_EQ(message[1], 'b');
+  EXPECT_EQ(message[2], '\0');
+}
+TEST(UMPTypesTextCommon, DataFromRangeWithProjection) {
+  using text_common = midi2::ump::flex_data::text_common;
+  constexpr std::array src{std::byte{'a'}, std::byte{'b'}};
+  auto const message = text_common{}.group(0).data(src, [](std::byte const b) { return static_cast<char8_t>(b); });
   EXPECT_EQ(message.size(), 2U);
   EXPECT_EQ(message[0], 'a');
   EXPECT_EQ(message[1], 'b');
@@ -643,5 +687,84 @@ TEST(UMPTypesTextCommon, FromStringTooLong) {
   EXPECT_EQ(message[10], 'k');
   EXPECT_EQ(message[11], 'l');
 }
+
+// ump_message
+static_assert(midi2::ump::ump_message<midi2::ump::utility::noop>);
+static_assert(midi2::ump::ump_message<midi2::ump::m1cvm::note_on>);
+static_assert(midi2::ump::ump_message<midi2::ump::m2cvm::note_on>);
+static_assert(midi2::ump::ump_message<midi2::ump::data64::sysex7_in_1>);
+static_assert(midi2::ump::ump_message<midi2::ump::stream::endpoint_name_notification>);
+static_assert(midi2::ump::ump_message<midi2::ump::flex_data::set_tempo>);
+static_assert(!midi2::ump::ump_message<int>, "Not tuple-like");
+static_assert(!midi2::ump::ump_message<std::uint32_t>, "Not tuple-like");
+static_assert(!midi2::ump::ump_message<std::tuple<std::uint32_t, std::uint32_t>>, "Tuple-like but not UMP words");
+static_assert(!midi2::ump::ump_message<std::array<std::uint32_t, 2>>, "Tuple-like but not UMP words");
+static_assert(!midi2::ump::ump_message<std::tuple<midi2::ump::m2cvm::note_on::word0, std::uint32_t>>,
+              "Only the first element is a UMP word");
+static_assert(!midi2::ump::ump_message<std::tuple<>>, "Too few words");
+static_assert(!midi2::ump::ump_message<std::tuple<midi2::ump::m2cvm::note_on::word0, midi2::ump::m2cvm::note_on::word0,
+                                                  midi2::ump::m2cvm::note_on::word0, midi2::ump::m2cvm::note_on::word0,
+                                                  midi2::ump::m2cvm::note_on::word0>>,
+              "Too many words");
+
+// The constraints on apply() and check().
+/// A function for apply() which returns a value that converts to bool.
+struct apply_bool {
+  /// \returns False, so that apply() goes on to the next word.
+  constexpr bool operator()(std::uint32_t) const noexcept { return false; }
+};
+/// A function for apply() whose result does not convert to bool.
+struct apply_void {
+  constexpr void operator()(std::uint32_t) const noexcept {}
+};
+template <typename T, typename Function>
+concept can_apply = requires(T const& t, Function f) { midi2::ump::apply(t, f); };
+template <typename T, typename Function, std::size_t Index>
+concept can_apply_from = requires(T const& t, Function f) { midi2::ump::apply<T, Function, Index>(t, f); };
+template <typename T>
+concept can_check = requires(T const& t) { midi2::ump::check(t); };
+
+static_assert(can_apply<midi2::ump::m2cvm::note_on, apply_bool>);
+static_assert(!can_apply<int, apply_bool>, "Not a UMP message");
+static_assert(!can_apply<std::array<std::uint32_t, 2>, apply_bool>, "Not a UMP message");
+static_assert(!can_apply<midi2::ump::m2cvm::note_on, apply_void>, "The result doesn't convert to bool");
+static_assert(!can_apply<midi2::ump::m2cvm::note_on, int>, "Not a function");
+static_assert(can_apply_from<midi2::ump::m2cvm::note_on, apply_bool, 1>);
+static_assert(!can_apply_from<midi2::ump::m2cvm::note_on, apply_bool, 2>, "Index is past the last word");
+static_assert(can_check<midi2::ump::m2cvm::note_on>);
+static_assert(can_check<midi2::ump::utility::noop>);
+static_assert(!can_check<int>, "Not a UMP message");
+static_assert(!can_check<std::tuple<std::uint32_t>>, "Not a UMP message");
+
+// The data() member functions check the elements of a range after the projection has been applied.
+template <typename Message, typename Range, typename... Proj>
+concept can_set_data = requires(Message m, Range const& r, Proj... p) { m.data(r, p...); };
+/// A projection which converts std::byte to an integer.
+struct byte_to_uint8 {
+  /// \param b  The byte to be converted.
+  /// \returns The value of \p b.
+  constexpr std::uint8_t operator()(std::byte const b) const noexcept { return std::to_integer<std::uint8_t>(b); }
+};
+/// A projection whose result is neither integral nor convertible to char8_t.
+struct to_void {
+  constexpr void operator()(std::byte) const noexcept {}
+};
+using byte_array = std::array<std::byte, 2>;
+static_assert(can_set_data<midi2::ump::data64::sysex7_in_1, byte_array, byte_to_uint8>);
+static_assert(!can_set_data<midi2::ump::data64::sysex7_in_1, byte_array>, "std::byte is not integral");
+static_assert(!can_set_data<midi2::ump::data64::sysex7_in_1, byte_array, to_void>, "The projection gives void");
+static_assert(can_set_data<midi2::ump::data128::sysex8_in_1, byte_array, byte_to_uint8>);
+static_assert(!can_set_data<midi2::ump::data128::sysex8_in_1, byte_array>, "std::byte is not integral");
+static_assert(can_set_data<midi2::ump::flex_data::text_common, byte_array, byte_to_uint8>);
+static_assert(!can_set_data<midi2::ump::flex_data::text_common, byte_array>, "std::byte doesn't convert to char8_t");
+static_assert(!can_set_data<midi2::ump::flex_data::text_common, byte_array, to_void>, "The projection gives void");
+
+// sysex7_message
+static_assert(midi2::ump::data64::sysex7_message<midi2::ump::data64::sysex7_in_1>);
+static_assert(midi2::ump::data64::sysex7_message<midi2::ump::data64::sysex7_start>);
+static_assert(midi2::ump::data64::sysex7_message<midi2::ump::data64::sysex7_continue>);
+static_assert(midi2::ump::data64::sysex7_message<midi2::ump::data64::sysex7_end>);
+static_assert(!midi2::ump::data64::sysex7_message<midi2::ump::m2cvm::note_on>);
+static_assert(!midi2::ump::data64::sysex7_message<int>);
 
 }  // end anonymous namespace

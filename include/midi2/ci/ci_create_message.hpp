@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <concepts>
 #include <cstddef>
 #include <cstring>
 #include <iterator>
@@ -485,6 +486,26 @@ constexpr O write_pe(O first, S const last, header const& hdr, property_exchange
 
 }  // end namespace details
 
+/// \brief Satisfied by the MIDI-CI message types that create_message() can serialize: those which have a
+///   details::type_to_packed<> specialization, such as discovery, invalidate_muid, and property_exchange::get_reply.
+template <typename T>
+concept ci_message = requires {
+  { details::type_to_packed<T>::id } -> std::convertible_to<message>;
+};
+
+namespace details {
+
+/// \brief Satisfied by the MIDI-CI message types T whose body has a fixed size: those for which type_to_packed<T>
+///   names the packed layouts for MIDI-CI version 1 and version 2. The other message types have their own
+///   create_message() overloads.
+template <typename T>
+concept fixed_size_message = ci_message<T> && requires {
+  typename type_to_packed<T>::v1;
+  typename type_to_packed<T>::v2;
+};
+
+}  // end namespace details
+
 /// \brief A sentinel which never compares equal to an iterator. Use this with create_message() when writing to an
 /// unbounded output iterator such as std::back_insert_iterator<>.
 struct trivial_sentinel {
@@ -503,7 +524,7 @@ struct trivial_sentinel {
 /// layout; any other version uses the version 2 layout. If the message is not defined for version 1, nothing is
 /// written.
 ///
-/// \tparam T  The type of the message.
+/// \tparam T  The type of the message: one whose body has a fixed size, such as discovery or invalidate_muid.
 /// \tparam O  An output iterator type which accepts std::byte values.
 /// \tparam S  A sentinel type for \p O.
 /// \param first  Along with \p last, the iterator-sentinel pair defining the range to which the bytes are written.
@@ -512,7 +533,7 @@ struct trivial_sentinel {
 /// \param t  The message.
 /// \returns An output iterator past the last element written.
 /// \note The bytes written do not include the F0 (start) and F7 (end) System Exclusive bytes.
-template <typename T, std::output_iterator<std::byte> O, std::sentinel_for<O> S>
+template <details::fixed_size_message T, std::output_iterator<std::byte> O, std::sentinel_for<O> S>
 constexpr O create_message(O first, S const last, header const& hdr, T const& t) {
   if (hdr.version == b7{1U}) {
     using v1_type = details::type_to_packed<T>::v1;
