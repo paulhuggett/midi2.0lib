@@ -6161,7 +6161,8 @@ public:
   /// \returns The number of name bytes held by the message.
   [[nodiscard]] constexpr size_type size() const noexcept {
     auto index = size_type{0};
-    for (auto const limit = this->max_size(); index < limit && this->name(index) != u8'\0'; ++index) {
+    while (index < this->max_size() && this->name(index) != u8'\0') {
+      ++index;
     }
     return index;
   }
@@ -6582,7 +6583,8 @@ public:
   /// \returns The number of ID bytes held by the message.
   [[nodiscard]] constexpr size_type size() const noexcept {
     auto index = size_type{0};
-    for (auto const limit = this->max_size(); index < limit && this->pid(index) != u8'\0'; ++index) {
+    while (index < this->max_size() && this->pid(index) != u8'\0') {
+      ++index;
     }
     return index;
   }
@@ -7753,7 +7755,8 @@ public:
   /// \returns The number of name bytes held by the message.
   [[nodiscard]] constexpr size_type size() const noexcept {
     auto index = size_type{0};
-    for (auto const limit = this->max_size(); index < limit && this->name(index) != u8'\0'; ++index) {
+    while (index < this->max_size() && this->name(index) != u8'\0') {
+      ++index;
     }
     return index;
   }

@@ -1122,7 +1122,7 @@ TEST(UMPTypesDeviceIdentity, SwRevisionFromRange) {
 // Values beyond the size of the field are ignored.
 TEST(UMPTypesDeviceIdentity, SwRevisionFromLongRange) {
   using device_identity_notification = midi2::ump::stream::device_identity_notification;
-  std::vector<int> const src{1, 2, 3, 4, 5, 6};
+  std::vector const src{1, 2, 3, 4, 5, 6};
   auto const message = device_identity_notification{}.sw_revision(src);
   EXPECT_THAT(message.sw_revision(), testing::ElementsAre(1, 2, 3, 4));
   EXPECT_EQ(message.dev_manuf_sysex_id(), (std::array<std::uint8_t, 3>{}));
