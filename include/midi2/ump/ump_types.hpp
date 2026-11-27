@@ -2840,7 +2840,7 @@ public:
     case 3: this->data3(v); break;
     case 4: this->data4(v); break;
     case 5: this->data5(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -2855,7 +2855,7 @@ public:
     case 3: return this->data3();
     case 4: return this->data4();
     case 5: return this->data5();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE:
     }
   }
 
@@ -5737,7 +5737,7 @@ public:
     case 0: this->dev_manuf_sysex_id_1(v); break;
     case 1: this->dev_manuf_sysex_id_2(v); break;
     case 2: this->dev_manuf_sysex_id_3(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -5749,7 +5749,7 @@ public:
     case 0: return this->dev_manuf_sysex_id_1();
     case 1: return this->dev_manuf_sysex_id_2();
     case 2: return this->dev_manuf_sysex_id_3();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE:
     }
   }
   /// Returns the device manufacturer's system exclusive ID.
@@ -5808,7 +5808,7 @@ public:
     case 1: this->sw_revision_2(v); break;
     case 2: this->sw_revision_3(v); break;
     case 3: this->sw_revision_4(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -5821,7 +5821,7 @@ public:
     case 1: return this->sw_revision_2();
     case 2: return this->sw_revision_3();
     case 3: return this->sw_revision_4();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE:
     }
   }
   /// Returns the software revision level.
@@ -6212,7 +6212,7 @@ public:
     case 11: this->name12(v); break;
     case 12: this->name13(v); break;
     case 13: this->name14(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -6235,7 +6235,7 @@ public:
     case 11: return this->name12();
     case 12: return this->name13();
     case 13: return this->name14();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE:
     }
   }
 
@@ -6634,7 +6634,7 @@ public:
     case 11: this->pid12(v); break;
     case 12: this->pid13(v); break;
     case 13: this->pid14(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -6657,7 +6657,7 @@ public:
     case 11: return this->pid12();
     case 12: return this->pid13();
     case 13: return this->pid14();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE:
     }
   }
 
@@ -7805,7 +7805,7 @@ public:
     case 10: this->name10(v); break;
     case 11: this->name11(v); break;
     case 12: this->name12(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -7827,7 +7827,7 @@ public:
     case 10: return this->name10();
     case 11: return this->name11();
     case 12: return this->name12();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE:
     }
   }
 
@@ -9966,7 +9966,7 @@ public:
     case 9: this->data9(v); break;
     case 10: this->data10(v); break;
     case 11: this->data11(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -9987,7 +9987,7 @@ public:
     case 9: return this->data9();
     case 10: return this->data10();
     case 11: return this->data11();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE:
     }
   }
 
@@ -10478,7 +10478,7 @@ public:
     case 10: this->data10(v); break;
     case 11: this->data11(v); break;
     case 12: this->data12(v); break;
-    default: assert(false && "Index out of range"); break;
+    default: assert(false && "Index out of range"); break; // LCOV_EXCL_LINE:
     }
     return *this;
   }
@@ -10500,7 +10500,7 @@ public:
     case 10: return this->data10();
     case 11: return this->data11();
     case 12: return this->data12();
-    default: assert(false && "Index out of range"); return 0;
+    default: assert(false && "Index out of range"); return 0; // LCOV_EXCL_LINE: unreachable
     }
   }
 

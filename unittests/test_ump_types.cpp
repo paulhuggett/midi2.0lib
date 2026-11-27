@@ -14,11 +14,14 @@
 #include "midi2/ump/ump_types.hpp"
 
 // Standard library
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <ranges>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 // Google test
@@ -769,9 +772,20 @@ TEST(UMPTypesEndpointName, NameSetByIteratorSentinel) {
   using namespace std::literals::string_view_literals;
   using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
   constexpr auto str = u8"hello"sv;
-  constexpr auto message = endpoint_name_notification{}.name(std::begin(str), std::end(str));
+  auto const message = endpoint_name_notification{}.name(std::begin(str), std::end(str));
   ASSERT_EQ(message.size(), 5U);
   EXPECT_TRUE(std::ranges::equal(message, str));
+}
+// The const iterators read the bytes and the non-const iterators can change them.
+TEST(UMPTypesEndpointName, Iterators) {
+  using testing::ElementsAre;
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto message = endpoint_name_notification{}.name({'a', 'b', 'c'});
+  EXPECT_EQ(std::distance(message.cbegin(), message.cend()), 3);
+  EXPECT_THAT(std::ranges::subrange(message.cbegin(), message.cend()), ElementsAre(u8'a', u8'b', u8'c'));
+  EXPECT_EQ(std::distance(message.begin(), message.end()), 3);
+  std::ranges::fill(message.begin(), message.end(), u8'x');
+  EXPECT_THAT(message, ElementsAre(u8'x', u8'x', u8'x'));
 }
 // Setting a shorter name zeroes the bytes left over from a longer one.
 TEST(UMPTypesEndpointName, ShorterNameClearsTheRest) {
@@ -902,9 +916,20 @@ TEST(UMPTypesProductInstanceId, PidSetByIteratorSentinel) {
   using namespace std::literals::string_view_literals;
   using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
   constexpr auto str = u8"hello"sv;
-  constexpr auto message = product_instance_id_notification{}.pid(std::begin(str), std::end(str));
+  auto const message = product_instance_id_notification{}.pid(std::begin(str), std::end(str));
   ASSERT_EQ(message.size(), 5U);
   EXPECT_TRUE(std::ranges::equal(message, str));
+}
+// The const iterators read the bytes and the non-const iterators can change them.
+TEST(UMPTypesProductInstanceId, Iterators) {
+  using testing::ElementsAre;
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto message = product_instance_id_notification{}.pid({'a', 'b', 'c'});
+  EXPECT_EQ(std::distance(message.cbegin(), message.cend()), 3);
+  EXPECT_THAT(std::ranges::subrange(message.cbegin(), message.cend()), ElementsAre(u8'a', u8'b', u8'c'));
+  EXPECT_EQ(std::distance(message.begin(), message.end()), 3);
+  std::ranges::fill(message.begin(), message.end(), u8'x');
+  EXPECT_THAT(message, ElementsAre(u8'x', u8'x', u8'x'));
 }
 // Setting a shorter ID zeroes the bytes left over from a longer one.
 TEST(UMPTypesProductInstanceId, ShorterPidClearsTheRest) {
@@ -1034,9 +1059,20 @@ TEST(UMPTypesFunctionBlockName, NameSetByIteratorSentinel) {
   using namespace std::literals::string_view_literals;
   using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
   constexpr auto str = u8"hello"sv;
-  constexpr auto message = function_block_name_notification{}.name(std::begin(str), std::end(str));
+  auto const message = function_block_name_notification{}.name(std::begin(str), std::end(str));
   ASSERT_EQ(message.size(), 5U);
   EXPECT_TRUE(std::ranges::equal(message, str));
+}
+// The const iterators read the bytes and the non-const iterators can change them.
+TEST(UMPTypesFunctionBlockName, Iterators) {
+  using testing::ElementsAre;
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto message = function_block_name_notification{}.name({'a', 'b', 'c'});
+  EXPECT_EQ(std::distance(message.cbegin(), message.cend()), 3);
+  EXPECT_THAT(std::ranges::subrange(message.cbegin(), message.cend()), ElementsAre(u8'a', u8'b', u8'c'));
+  EXPECT_EQ(std::distance(message.begin(), message.end()), 3);
+  std::ranges::fill(message.begin(), message.end(), u8'x');
+  EXPECT_THAT(message, ElementsAre(u8'x', u8'x', u8'x'));
 }
 // Setting a shorter name zeroes the bytes left over from a longer one.
 TEST(UMPTypesFunctionBlockName, ShorterNameClearsTheRest) {
@@ -1089,11 +1125,35 @@ TEST(UMPTypesFunctionBlockName, IteratorWriteUsingAlgorithm) {
   EXPECT_THAT(message, ElementsAreArray(src));
 }
 
+TEST(UMPTypesEndpointDiscovery, FilterRequests) {
+  using endpoint_discovery = midi2::ump::stream::endpoint_discovery;
+  using enum endpoint_discovery::filter_mask;
+  auto const message =
+      endpoint_discovery{}.filter(std::to_underlying(device_identity) | std::to_underlying(endpoint_name));
+  EXPECT_FALSE(message.filter_requests(endpoint_info));
+  EXPECT_TRUE(message.filter_requests(device_identity));
+  EXPECT_TRUE(message.filter_requests(endpoint_name));
+  EXPECT_FALSE(message.filter_requests(product_instance));
+  EXPECT_FALSE(message.filter_requests(stream_configuration));
+}
+TEST(UMPTypesFunctionBlockDiscovery, FilterRequests) {
+  using function_block_discovery = midi2::ump::stream::function_block_discovery;
+  using enum function_block_discovery::filter_mask;
+  auto const info_only = function_block_discovery{}.filter(std::to_underlying(info));
+  EXPECT_TRUE(info_only.filter_requests(info));
+  EXPECT_FALSE(info_only.filter_requests(name));
+  auto const both = function_block_discovery{}.filter(std::to_underlying(info) | std::to_underlying(name));
+  EXPECT_TRUE(both.filter_requests(info));
+  EXPECT_TRUE(both.filter_requests(name));
+}
+
 TEST(UMPTypesDeviceIdentity, IndexedSwRevision) {
   using device_identity_notification = midi2::ump::stream::device_identity_notification;
   auto message = device_identity_notification{};
   message.sw_revision(0, 0x01).sw_revision(1, 0x02).sw_revision(2, 0x03).sw_revision(3, 0x7F);
   EXPECT_EQ(message.sw_revision(0), 0x01U);
+  EXPECT_EQ(message.sw_revision(1), 0x02U);
+  EXPECT_EQ(message.sw_revision(2), 0x03U);
   EXPECT_EQ(message.sw_revision(3), 0x7FU);
   EXPECT_EQ(message.sw_revision_1(), 0x01U);
   EXPECT_EQ(message.sw_revision_2(), 0x02U);
@@ -1144,14 +1204,16 @@ TEST(UMPTypesDeviceIdentity, SwRevisionFromTransformedRange) {
 TEST(UMPTypesDeviceIdentity, SwRevisionIteratorSentinel) {
   using device_identity_notification = midi2::ump::stream::device_identity_notification;
   constexpr std::array<std::uint8_t, 4> src{4, 3, 2, 1};
-  constexpr auto message = device_identity_notification{}.sw_revision(src.begin(), src.end());
+  auto const message = device_identity_notification{}.sw_revision(src.begin(), src.end());
   EXPECT_THAT(message.sw_revision(), testing::ElementsAre(4, 3, 2, 1));
 }
 TEST(UMPTypesDeviceIdentity, IndexedDevManufSysexId) {
   using device_identity_notification = midi2::ump::stream::device_identity_notification;
   auto message = device_identity_notification{};
   message.dev_manuf_sysex_id(0, 0x00).dev_manuf_sysex_id(1, 0x21).dev_manuf_sysex_id(2, 0x7F);
+  EXPECT_EQ(message.dev_manuf_sysex_id(0), 0x00U);
   EXPECT_EQ(message.dev_manuf_sysex_id(1), 0x21U);
+  EXPECT_EQ(message.dev_manuf_sysex_id(2), 0x7FU);
   EXPECT_EQ(message.dev_manuf_sysex_id_1(), 0x00U);
   EXPECT_EQ(message.dev_manuf_sysex_id_2(), 0x21U);
   EXPECT_EQ(message.dev_manuf_sysex_id_3(), 0x7FU);
@@ -1168,7 +1230,7 @@ TEST(UMPTypesDeviceIdentity, OneByteDevManufSysexId) {
 TEST(UMPTypesDeviceIdentity, DevManufSysexIdFromRange) {
   using device_identity_notification = midi2::ump::stream::device_identity_notification;
   constexpr std::array<std::uint8_t, 3> src{0x00, 0x20, 0x29};
-  constexpr auto message = device_identity_notification{}.dev_manuf_sysex_id(src);
+  auto const message = device_identity_notification{}.dev_manuf_sysex_id(src);
   EXPECT_THAT(message.dev_manuf_sysex_id(), testing::ElementsAreArray(src));
 }
 TEST(UMPTypesDeviceIdentity, DevManufSysexIdIteratorSentinel) {
