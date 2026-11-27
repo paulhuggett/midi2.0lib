@@ -19,7 +19,8 @@
 //   Discovery (with the Function Block Info and Name Notifications).
 // - MIDI-CI messages carried in SysEx7 on the function block's group: Discovery, Invalidate MUID, Inquiry: Endpoint,
 //   Profile Inquiry, Property Exchange Capabilities, and Property Exchange Get for the ResourceList and DeviceInfo
-//   resources.
+//   resources. The header of each Get request is parsed by the peejay JSON parser
+//   (https://github.com/paulhuggett/peejay).
 //
 // When its MUID is invalidated, or another device's Discovery uses the same MUID, the device picks a new MUID and
 // broadcasts a Discovery message so that other devices can connect to it again. It invalidates its MUID when it quits.
@@ -43,6 +44,10 @@
 #include <midi2/ump/ump_dispatcher.hpp>
 #include <midi2/ump/ump_types.hpp>
 
+// peejay JSON parser
+#include <peejay/dom.hpp>
+#include <peejay/json.hpp>
+
 // Standard library
 #include <algorithm>
 #include <array>
@@ -52,6 +57,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <expected>
 #include <format>
 #include <iostream>
 #include <optional>
@@ -100,6 +106,7 @@ constexpr auto device_info_json =
     R"({"manufacturerId":[125,0,0],"manufacturer":"midi2lib","familyId":[0,0],"family":"Demo",)"
     R"("modelId":[0,0],"model":"Workbench Device","versionId":[0,0,0,1],"version":"0.0.1"})"sv;
 constexpr auto status_ok_json = R"({"status":200})"sv;
+constexpr auto status_bad_request_json = R"({"status":400})"sv;
 constexpr auto status_not_found_json = R"({"status":404})"sv;
 
 /// The text bytes carried by one UMP Stream message.
@@ -160,20 +167,24 @@ Sysex7 make_sysex7(std::uint8_t const group, std::span<std::byte const> const da
 }
 
 /// Finds the value of the "resource" member of a Property Exchange request header such as {"resource":"DeviceInfo"}.
-/// This is not a full JSON parser: it is enough for the requests that the Workbench sends.
-std::string_view resource_name(std::string_view header) {
-  constexpr auto key = R"("resource")"sv;
-  auto pos = header.find(key);
-  if (pos == std::string_view::npos) {
-    return {};
+/// The header may have other members, such as "resId" or "offset": they are ignored.
+///
+/// \param header  The header data from a Property Exchange request.
+/// \returns  The value of the "resource" member, or a description of the error if the header is not valid JSON or is
+///   not an object with a string "resource" member.
+std::expected<std::u8string, std::string> resource_name(std::span<char const> const header) {
+  peejay::parser<peejay::dom::dom<>> parser;
+  auto const root =
+      parser.input(header | std::views::transform([](char const c) { return static_cast<char8_t>(c); })).eof();
+  if (auto const err = parser.last_error()) {
+    return std::unexpected{err.message()};
   }
-  header.remove_prefix(pos + key.size());
-  pos = header.find('"');
-  if (pos == std::string_view::npos) {
-    return {};
+  if (root) {
+    if (auto const resource = root->get_object_element<std::u8string>(u8"resource")) {
+      return resource->get();
+    }
   }
-  header.remove_prefix(pos + 1);
-  return header.substr(0, header.find('"'));
+  return std::unexpected{"the header is not an object with a string \"resource\" member"};
 }
 
 /// Formats UMP words as hexadecimal.
@@ -306,28 +317,37 @@ private:
   /// \param message  The body of the reply.
   template <midi2::ci::ci_message Message>
   void send_ci(midi2::ci::header const& request, midi2::ci::b7 const device_id, Message const& message) const {
-    this->send_ci(midi2::ci::header{.device_id = device_id,
-                                    .version = request.version == 1_b7 ? 1_b7 : 2_b7,
-                                    .remote_muid = muid_,
-                                    .local_muid = request.remote_muid},
-                  message);
+    this->send_ci(
+        midi2::ci::header{
+            .device_id = device_id,
+            .version = request.version == 1_b7 ? 1_b7 : 2_b7,
+            .remote_muid = muid_,
+            .local_muid = request.remote_muid,
+        },
+        message);
   }
   /// Sends a MIDI-CI message that is not a reply to every device on the function block's group.
   /// \tparam Message  One of the midi2::ci message types.
   /// \param message  The body of the message.
   template <midi2::ci::ci_message Message> void broadcast_ci(Message const& message) const {
-    this->send_ci(midi2::ci::header{.device_id = function_block_device_id,
-                                    .version = 2_b7,
-                                    .remote_muid = muid_,
-                                    .local_muid = midi2::ci::broadcast_muid},
-                  message);
+    this->send_ci(
+        midi2::ci::header{
+            .device_id = function_block_device_id,
+            .version = 2_b7,
+            .remote_muid = muid_,
+            .local_muid = midi2::ci::broadcast_muid,
+        },
+        message);
   }
   /// Sends a MIDI-CI message.
   /// \tparam Message  One of the midi2::ci message types.
   /// \param header  The header of the message.
   /// \param message  The body of the message.
   template <midi2::ci::ci_message Message> void send_ci(midi2::ci::header const& header, Message const& message) const {
-    std::array<std::byte, max_sysex_size> buffer{};
+    // create_message() returns the end of the output range both when the message fills it exactly and when the message
+    // doesn't fit. The spare byte means that a message of up to max_sysex_size bytes never reaches the end of the
+    // buffer, so reaching it means that the message is too large.
+    std::array<std::byte, max_sysex_size + 1> buffer{};
     auto const last = midi2::ci::create_message(buffer.begin(), buffer.end(), header, message);
     if (last == buffer.end()) {
       std::cerr << "MIDI-CI reply is too large\n";
@@ -399,11 +419,14 @@ void device::setup_ump() {
   namespace stream = midi2::ump::stream;
   namespace d64 = midi2::ump::data64;
   config.stream
-      .on_endpoint_discovery([](device* self, stream::endpoint_discovery const& m) { self->endpoint_discovery(m); })
-      .on_jr_configuration_request(
-          [](device* self, stream::jr_configuration_request const& m) { self->stream_configuration_request(m); })
-      .on_function_block_discovery(
-          [](device* self, stream::function_block_discovery const& m) { self->function_block_discovery(m); });
+      .on_endpoint_discovery(
+          [](device const* const self, stream::endpoint_discovery const& m) { self->endpoint_discovery(m); })
+      .on_jr_configuration_request([](device const* const self, stream::jr_configuration_request const& m) {
+        self->stream_configuration_request(m);
+      })
+      .on_function_block_discovery([](device const* const self, stream::function_block_discovery const& m) {
+        self->function_block_discovery(m);
+      });
 
   config.data64.on_sysex7_in_1([](device* self, d64::sysex7_in_1 const& m) { self->sysex7(m, true, true); })
       .on_sysex7_start([](device* self, d64::sysex7_start const& m) { self->sysex7(m, true, false); })
@@ -433,27 +456,32 @@ void device::setup_ump() {
 void device::setup_ci() {
   auto& config = ci_.config();
   // The broadcast MUID is always accepted. Otherwise, only messages addressed to this device are dispatched.
-  config.system.on_check_muid([](device* self, std::uint8_t, midi2::ci::muid const m) { return m == self->muid(); });
+  config.system.on_check_muid(
+      [](device const* const self, std::uint8_t, midi2::ci::muid const m) { return m == self->muid(); });
   config.system.on_buffer_overflow([](device*) { std::cerr << "MIDI-CI message is too large\n"; });
   using midi2::ci::header;
   namespace pe = midi2::ci::property_exchange;
   config.management
-      .on_discovery([](device* self, header const& h, midi2::ci::discovery const& d) { self->ci_discovery(h, d); })
-      .on_discovery_reply(
-          [](device* self, header const& h, midi2::ci::discovery_reply const&) { self->ci_discovery_reply(h); })
+      .on_discovery(
+          [](device* const self, header const& h, midi2::ci::discovery const& d) { self->ci_discovery(h, d); })
+      .on_discovery_reply([](device const* const self, header const& h, midi2::ci::discovery_reply const&) {
+        self->ci_discovery_reply(h);
+      })
       .on_invalidate_muid(
           [](device* self, header const& h, midi2::ci::invalidate_muid const& i) { self->ci_invalidate_muid(h, i); })
-      .on_endpoint([](device* self, header const& h, midi2::ci::endpoint const& e) { self->ci_endpoint(h, e); });
-  config.profile.on_inquiry([](device* self, header const& h) { self->ci_profile_inquiry(h); });
+      .on_endpoint(
+          [](device const* const self, header const& h, midi2::ci::endpoint const& e) { self->ci_endpoint(h, e); });
+  config.profile.on_inquiry([](device const* const self, header const& h) { self->ci_profile_inquiry(h); });
   config.property_exchange
-      .on_capabilities([](device* self, header const& h, pe::capabilities const&) { self->ci_pe_capabilities(h); })
-      .on_get([](device* self, header const& h, pe::get const& g) { self->ci_pe_get(h, g); });
+      .on_capabilities(
+          [](device const* const self, header const& h, pe::capabilities const&) { self->ci_pe_capabilities(h); })
+      .on_get([](device const* const self, header const& h, pe::get const& g) { self->ci_pe_get(h, g); });
 }
 
 // Collects the words of each received UMP message and logs the message once it is complete.
 void device::log_received_word(std::uint32_t const word) {
   rx_words_.at(rx_size_++) = word;
-  auto const type = static_cast<midi2::ump::message_type>(rx_words_[0] >> 28U);
+  auto const type = static_cast<midi2::ump::message_type>(rx_words_.at(0) >> 28U);
   if (rx_size_ >= midi2::ump::ump_message_size(type)) {
     std::cout << std::format("<- UMP: {}\n", hex_words(std::span{rx_words_}.first(rx_size_)));
     rx_size_ = 0;
@@ -464,7 +492,7 @@ void device::send_words(std::span<std::uint32_t const> const words) const {
   if (debug_) {
     std::cout << std::format("-> UMP: {}\n", hex_words(words));
   }
-  MIDIEventList list{};
+  MIDIEventList list;
   auto* packet = MIDIEventListInit(&list, kMIDIProtocol_2_0);
   packet = MIDIEventListAdd(&list, sizeof(list), packet, 0, words.size(), words.data());
   if (packet == nullptr) {
@@ -496,17 +524,10 @@ void device::send_sysex7(std::uint8_t const group, std::span<std::byte const> da
 // ~~~~~~~~~~
 
 void device::endpoint_discovery(midi2::ump::stream::endpoint_discovery const& message) const {
-  auto const filter = message.filter();
   std::cout << std::format("Endpoint Discovery: UMP v{}.{} filter=0x{:02X}\n", message.version_major(),
-                           message.version_minor(), filter);
-  enum : std::uint8_t {
-    endpoint_info = 1U << 0U,
-    device_identity = 1U << 1U,
-    endpoint_name = 1U << 2U,
-    product_instance = 1U << 3U,
-    stream_configuration = 1U << 4U,
-  };
-  if ((filter & endpoint_info) != 0U) {
+                           message.version_minor(), message.filter());
+  using enum midi2::ump::stream::endpoint_discovery::filter_mask;
+  if (message.filter_requests(endpoint_info)) {
     this->send(midi2::ump::stream::endpoint_info_notification{}
                    .version_major(1U)
                    .version_minor(1U)
@@ -517,70 +538,35 @@ void device::endpoint_discovery(midi2::ump::stream::endpoint_discovery const& me
                    .receive_jr_timestamp_capability(0U)
                    .transmit_jr_timestamp_capability(0U));
   }
-  if ((filter & device_identity) != 0U) {
+  if (message.filter_requests(device_identity)) {
     this->send(midi2::ump::stream::device_identity_notification{}
-                   .dev_manuf_sysex_id_1(manufacturer_id[0])
-                   .dev_manuf_sysex_id_2(manufacturer_id[1])
-                   .dev_manuf_sysex_id_3(manufacturer_id[2])
+                   .dev_manuf_sysex_id(manufacturer_id)
                    .device_family_lsb(0U)
                    .device_family_msb(0U)
                    .device_family_model_lsb(0U)
                    .device_family_model_msb(0U)
-                   .sw_revision_1(software_revision[0])
-                   .sw_revision_2(software_revision[1])
-                   .sw_revision_3(software_revision[2])
-                   .sw_revision_4(software_revision[3]));
+                   .sw_revision(software_revision));
   }
-  if ((filter & endpoint_name) != 0U) {
+  if (message.filter_requests(endpoint_name)) {
     this->send_endpoint_name();
   }
-  if ((filter & product_instance) != 0U) {
+  if (message.filter_requests(product_instance)) {
     this->send_product_instance_id();
   }
-  if ((filter & stream_configuration) != 0U) {
+  if (message.filter_requests(stream_configuration)) {
     this->send_stream_configuration();
   }
 }
 
 void device::send_endpoint_name() const {
   for_each_text_chunk<14>(endpoint_name_, [this](stream_format const format, text_chunk<14> const& c) {
-    this->send(midi2::ump::stream::endpoint_name_notification{}
-                   .format(std::to_underlying(format))
-                   .name1(c[0])
-                   .name2(c[1])
-                   .name3(c[2])
-                   .name4(c[3])
-                   .name5(c[4])
-                   .name6(c[5])
-                   .name7(c[6])
-                   .name8(c[7])
-                   .name9(c[8])
-                   .name10(c[9])
-                   .name11(c[10])
-                   .name12(c[11])
-                   .name13(c[12])
-                   .name14(c[13]));
+    this->send(midi2::ump::stream::endpoint_name_notification{}.format(std::to_underlying(format)).name(c));
   });
 }
 
 void device::send_product_instance_id() const {
   for_each_text_chunk<14>(product_instance_id, [this](stream_format const format, text_chunk<14> const& c) {
-    this->send(midi2::ump::stream::product_instance_id_notification{}
-                   .format(std::to_underlying(format))
-                   .pid1(c[0])
-                   .pid2(c[1])
-                   .pid3(c[2])
-                   .pid4(c[3])
-                   .pid5(c[4])
-                   .pid6(c[5])
-                   .pid7(c[6])
-                   .pid8(c[7])
-                   .pid9(c[8])
-                   .pid10(c[9])
-                   .pid11(c[10])
-                   .pid12(c[11])
-                   .pid13(c[12])
-                   .pid14(c[13]));
+    this->send(midi2::ump::stream::product_instance_id_notification{}.format(std::to_underlying(format)).pid(c));
   });
 }
 
@@ -604,11 +590,11 @@ void device::function_block_discovery(midi2::ump::stream::function_block_discove
   if (block != all_blocks && block != function_block_number) {
     return;
   }
-  enum : std::uint8_t { info = 1U << 0U, name = 1U << 1U };
-  if ((filter & info) != 0U) {
+  using enum midi2::ump::stream::function_block_discovery::filter_mask;
+  if (message.filter_requests(info)) {
     this->send_function_block_info();
   }
-  if ((filter & name) != 0U) {
+  if (message.filter_requests(name)) {
     this->send_function_block_name();
   }
 }
@@ -635,19 +621,7 @@ void device::send_function_block_name() const {
     this->send(midi2::ump::stream::function_block_name_notification{}
                    .format(std::to_underlying(format))
                    .block_num(function_block_number)
-                   .name0(c[0])
-                   .name1(c[1])
-                   .name2(c[2])
-                   .name3(c[3])
-                   .name4(c[4])
-                   .name5(c[5])
-                   .name6(c[6])
-                   .name7(c[7])
-                   .name8(c[8])
-                   .name9(c[9])
-                   .name10(c[10])
-                   .name11(c[11])
-                   .name12(c[12]));
+                   .name(c));
   });
 }
 
@@ -746,19 +720,24 @@ void device::ci_pe_capabilities(midi2::ci::header const& header) const {
   std::cout << "MIDI-CI Property Exchange Capabilities\n";
   this->send_ci(header, function_block_device_id,
                 midi2::ci::property_exchange::capabilities_reply{
-                    .num_simultaneous = 1_b7, .major_version = 0_b7, .minor_version = 0_b7});
+                    .num_simultaneous = 1_b7,
+                    .major_version = 0_b7,
+                    .minor_version = 0_b7,
+                });
 }
 
 void device::ci_pe_get(midi2::ci::header const& header, midi2::ci::property_exchange::get const& get) const {
-  auto const request_header = std::string_view{get.header.data(), get.header.size()};
-  auto const resource = resource_name(request_header);
-  std::cout << std::format("MIDI-CI Property Exchange Get: {}\n", request_header);
+  std::cout << std::format("MIDI-CI Property Exchange Get: {}\n",
+                           std::string_view{get.header.data(), get.header.size()});
 
   auto reply_header = status_ok_json;
   auto data = std::string_view{};
-  if (resource == "ResourceList") {
+  if (auto const resource = resource_name(get.header); !resource) {
+    std::cout << std::format("  Bad request: {}\n", resource.error());
+    reply_header = status_bad_request_json;
+  } else if (*resource == u8"ResourceList") {
     data = resource_list_json;
-  } else if (resource == "DeviceInfo") {
+  } else if (*resource == u8"DeviceInfo") {
     data = device_info_json;
   } else {
     reply_header = status_not_found_json;
@@ -841,8 +820,7 @@ int run(std::string const& endpoint_name, bool const debug) {
   // Run until SIGINT. CoreMIDI calls the destination's block on a thread of its own, so all of the device's work
   // happens there; the main thread's run loop just waits for the signal.
   std::signal(SIGINT, SIG_IGN);
-  dispatch_source_t const sigint =
-      dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGINT, 0, dispatch_get_main_queue());
+  dispatch_source_t sigint = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGINT, 0, dispatch_get_main_queue());
   dispatch_source_set_event_handler(sigint, ^{
     CFRunLoopStop(CFRunLoopGetMain());
   });

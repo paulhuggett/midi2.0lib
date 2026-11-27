@@ -53,7 +53,7 @@ std::error_code notes_off(R const& range, std::uint8_t group, std::uint8_t chann
     if (auto const err = midi2::ump::apply(noff, transmit)) {
       return err;
     }
-    // Print a dash to separate the individual UMP messages.
+    // End the line to separate the individual UMP messages.
     std::cout << '\n';
   }
   return {};

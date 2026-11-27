@@ -10,6 +10,14 @@
 
 /// \file ci_create_message.hpp
 /// \brief Functions which serialize MIDI-CI messages to a sequence of bytes.
+///
+/// Each create_message() overload writes a message to the range defined by an output iterator and a sentinel, and
+/// returns an iterator past the last byte written. A message is written in parts (the header, then the body), and a
+/// part is written only if there is room for all of it. If the message does not fit, the parts that did fit may have
+/// been written and the iterator returned is equal to the sentinel. A message that fills the range exactly also
+/// returns an iterator equal to the sentinel, so to tell the two apart, use a range which is at least one byte larger
+/// than the largest message to be written. When writing to an output iterator that cannot run out of space, such as
+/// std::back_insert_iterator<>, use trivial_sentinel.
 
 #ifndef MIDI2_CI_CREATE_MESSAGE_HPP
 #define MIDI2_CI_CREATE_MESSAGE_HPP
@@ -383,7 +391,8 @@ constexpr O safe_copy(O first, S last, T const& t) {
 /// \param span  The variable-length tail of the message.
 /// \returns An output iterator past the last element written. If there was not sufficient space, nothing is written
 ///   and \p first is advanced as far as \p last.
-/// \note As with safe_copy(), nothing is written if the range holds exactly the number of bytes required.
+/// \note As with safe_copy(), a range which holds exactly the number of bytes required is filled. The iterator returned
+///   is then equal to \p last, as it is when there is not sufficient space.
 template <typename ElementType, std::output_iterator<std::byte> O, std::sentinel_for<O> S>
   requires(std::is_trivially_copyable_v<ElementType> && alignof(ElementType) == 1)
 constexpr O write_packed_with_tail(O first, S const last, std::byte const* ptr, std::size_t const size,

@@ -5023,6 +5023,78 @@ class end_of_clip;
 
 }  // namespace midi2::ump::stream
 
+/// \brief Reads and writes the name bytes of an Endpoint Name Notification message, which are reached by its
+///   name(index) and name(index, value) member functions rather than data().
+///
+/// The member functions are templates because midi2::ump::stream::endpoint_name_notification is incomplete here.
+template <> struct midi2::ump::details::element_access<midi2::ump::stream::endpoint_name_notification> {
+  /// \brief Returns a name byte of a message.
+  /// \tparam Message  The message type: midi2::ump::stream::endpoint_name_notification.
+  /// \param message  The message containing the name byte.
+  /// \param index  The index of the name byte.
+  /// \returns The name byte at \p index.
+  template <typename Message> static constexpr auto get(Message const& message, std::size_t const index) noexcept {
+    return message.name(index);
+  }
+  /// \brief Sets a name byte of a message.
+  /// \tparam Message  The message type: midi2::ump::stream::endpoint_name_notification.
+  /// \param message  The message containing the name byte.
+  /// \param index  The index of the name byte.
+  /// \param v  The new value of the name byte.
+  template <typename Message>
+  static constexpr void set(Message& message, std::size_t const index, typename Message::value_type const v) noexcept {
+    message.name(index, v);
+  }
+};
+
+/// \brief Reads and writes the ID bytes of a Product Instance Id Notification message, which are reached by its
+///   pid(index) and pid(index, value) member functions rather than data().
+///
+/// The member functions are templates because midi2::ump::stream::product_instance_id_notification is incomplete here.
+template <> struct midi2::ump::details::element_access<midi2::ump::stream::product_instance_id_notification> {
+  /// \brief Returns an ID byte of a message.
+  /// \tparam Message  The message type: midi2::ump::stream::product_instance_id_notification.
+  /// \param message  The message containing the ID byte.
+  /// \param index  The index of the ID byte.
+  /// \returns The ID byte at \p index.
+  template <typename Message> static constexpr auto get(Message const& message, std::size_t const index) noexcept {
+    return message.pid(index);
+  }
+  /// \brief Sets an ID byte of a message.
+  /// \tparam Message  The message type: midi2::ump::stream::product_instance_id_notification.
+  /// \param message  The message containing the ID byte.
+  /// \param index  The index of the ID byte.
+  /// \param v  The new value of the ID byte.
+  template <typename Message>
+  static constexpr void set(Message& message, std::size_t const index, typename Message::value_type const v) noexcept {
+    message.pid(index, v);
+  }
+};
+
+/// \brief Reads and writes the name bytes of a Function Block Name Notification message, which are reached by its
+///   name(index) and name(index, value) member functions rather than data().
+///
+/// The member functions are templates because midi2::ump::stream::function_block_name_notification is incomplete here.
+template <> struct midi2::ump::details::element_access<midi2::ump::stream::function_block_name_notification> {
+  /// \brief Returns a name byte of a message.
+  /// \tparam Message  The message type: midi2::ump::stream::function_block_name_notification.
+  /// \param message  The message containing the name byte.
+  /// \param index  The index of the name byte.
+  /// \returns The name byte at \p index.
+  template <typename Message> static constexpr auto get(Message const& message, std::size_t const index) noexcept {
+    return message.name(index);
+  }
+  /// \brief Sets a name byte of a message.
+  /// \tparam Message  The message type: midi2::ump::stream::function_block_name_notification.
+  /// \param message  The message containing the name byte.
+  /// \param index  The index of the name byte.
+  /// \param v  The new value of the name byte.
+  template <typename Message>
+  static constexpr void set(Message& message, std::size_t const index, typename Message::value_type const v) noexcept {
+    message.name(index, v);
+  }
+};
+
 // 7.1.1 Endpoint Discovery Message
 /// \brief The Endpoint Discovery message (section 7.1.1).
 class midi2::ump::stream::endpoint_discovery {
@@ -5137,6 +5209,16 @@ public:
   /// \param v  The value to be assigned to the word0::version_minor field.
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word0, version_minor, ump::stream::endpoint_discovery)
+
+  /// The Filter bitmap is used by the requesting Device to specify the information to be retrieved.
+  enum class filter_mask : std::uint8_t {
+    endpoint_info = 1U << 0U,         ///< Requesting an Endpoint Info Notification
+    device_identity = 1U << 1U,       ///< Requesting a Device Identity Notification
+    endpoint_name = 1U << 2U,         ///< Requesting an Endpoint Name Notification
+    product_instance = 1U << 3U,      ///< Requesting a Product Instance Id Notification
+    stream_configuration = 1U << 4U,  ///< Requesting a Stream Configuration Notification
+  };
+
   /// \fn constexpr auto midi2::ump::stream::endpoint_discovery::filter() const noexcept
   /// \brief Returns the value of the word1::filter field.
   /// \returns The value of the word1::filter field.
@@ -5146,6 +5228,7 @@ public:
   /// \param v  The value to be assigned to the word1::filter field.
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word1, filter, ump::stream::endpoint_discovery)
+
   /// \fn constexpr auto midi2::ump::stream::endpoint_discovery::value2() const noexcept
   /// \brief Returns the value of the word2::value2 field.
   /// \returns The value of the word2::value2 field.
@@ -5164,6 +5247,13 @@ public:
   /// \param v  The value to be assigned to the word3::value3 field.
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word3, value3, ump::stream::endpoint_discovery)
+
+  /// \param bitmap  The filter_mask to be tested
+  /// \returns true if the message's filter mark specified the field given by \p bitmap
+  [[nodiscard]] constexpr bool filter_requests(filter_mask const bitmap) const noexcept {
+    return (static_cast<std::byte>(this->filter()) & static_cast<std::byte>(std::to_underlying(bitmap))) !=
+           std::byte{0U};
+  }
 
 private:
   friend struct ::std::tuple_size<endpoint_discovery>;
@@ -5637,6 +5727,148 @@ public:
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word3, sw_revision_4, ump::stream::device_identity_notification)
 
+  /// Sets byte \p index of the device manufacturer's system exclusive ID.
+  /// \param index  The index of the byte to be set. Must be less than 3.
+  /// \param v  The value to be stored.
+  /// \returns *this
+  constexpr device_identity_notification& dev_manuf_sysex_id(std::size_t const index,
+                                                             adt::uinteger_t<7> const v) noexcept {
+    switch (index) {
+    case 0: this->dev_manuf_sysex_id_1(v); break;
+    case 1: this->dev_manuf_sysex_id_2(v); break;
+    case 2: this->dev_manuf_sysex_id_3(v); break;
+    default: assert(false && "Index out of range"); break;
+    }
+    return *this;
+  }
+  /// Returns byte \p index of the device manufacturer's system exclusive ID.
+  /// \param index  The index of the byte to be returned. Must be less than 3.
+  /// \returns Byte \p index of the device manufacturer's system exclusive ID.
+  [[nodiscard]] constexpr adt::uinteger_t<7> dev_manuf_sysex_id(std::size_t const index) const noexcept {
+    switch (index) {
+    case 0: return this->dev_manuf_sysex_id_1();
+    case 1: return this->dev_manuf_sysex_id_2();
+    case 2: return this->dev_manuf_sysex_id_3();
+    default: assert(false && "Index out of range"); return 0;
+    }
+  }
+  /// Returns the device manufacturer's system exclusive ID.
+  /// \returns The 3 bytes of the device manufacturer's system exclusive ID.
+  [[nodiscard]] constexpr std::array<adt::uinteger_t<7>, 3> dev_manuf_sysex_id() const noexcept {
+    return {this->dev_manuf_sysex_id_1(), this->dev_manuf_sysex_id_2(), this->dev_manuf_sysex_id_3()};
+  }
+
+  /// Copies the device manufacturer's system exclusive ID from an initializer list into the message. Any bytes not
+  ///   given a value are set to zero, so a one-byte ID is given as just that byte.
+  /// \tparam T  An integral type.
+  /// \param vs  The bytes to be copied. At most 3 values are copied.
+  /// \returns *this
+  template <std::integral T> constexpr device_identity_notification& dev_manuf_sysex_id(std::initializer_list<T> vs) {
+    assert(vs.size() <= 3 && "initializer list has too many members");
+    return this->dev_manuf_sysex_id(vs.begin(), vs.end());
+  }
+  /// Copies the device manufacturer's system exclusive ID from a range into the message. Any bytes not given a value
+  ///   are set to zero.
+  /// \tparam Range  An input range whose elements are integral once \p Proj has been applied.
+  /// \tparam Proj  The type of the projection applied to each element of the range.
+  /// \param range  The bytes to be copied. At most 3 values are copied.
+  /// \param proj  A projection applied to each element of the range.
+  /// \returns *this
+  template <std::ranges::input_range Range, typename Proj = std::identity>
+    requires std::is_integral_v<::midi2::ump::details::projected_value_t<Range, Proj>>
+  constexpr device_identity_notification& dev_manuf_sysex_id(Range&& range, Proj proj = {}) {
+    ::midi2::ump::details::set_fields<7, 3>(
+        std::ranges::begin(range), std::ranges::end(range), proj,
+        [this](std::size_t const index, adt::uinteger_t<7> const v) { this->dev_manuf_sysex_id(index, v); });
+    return *this;
+  }
+  /// Copies the device manufacturer's system exclusive ID from the iterator range [\p first, \p last) into the message.
+  ///   Any bytes not given a value are set to zero.
+  /// \tparam I  An input iterator type whose value type is integral.
+  /// \tparam S  A sentinel type for \p I.
+  /// \param first  The beginning of the range of bytes to be copied.
+  /// \param last  The end of the range of bytes to be copied. At most 3 values are copied.
+  /// \returns *this
+  template <std::input_iterator I, std::sentinel_for<I> S>
+    requires std::is_integral_v<std::remove_cvref_t<typename std::iterator_traits<I>::value_type>>
+  constexpr device_identity_notification& dev_manuf_sysex_id(I first, S last) {
+    ::midi2::ump::details::set_fields<7, 3>(
+        std::move(first), std::move(last), std::identity{},
+        [this](std::size_t const index, adt::uinteger_t<7> const v) { this->dev_manuf_sysex_id(index, v); });
+    return *this;
+  }
+
+  /// Sets byte \p index of the software revision level.
+  /// \param index  The index of the byte to be set. Must be less than 4.
+  /// \param v  The value to be stored.
+  /// \returns *this
+  constexpr device_identity_notification& sw_revision(std::size_t const index, adt::uinteger_t<7> const v) noexcept {
+    switch (index) {
+    case 0: this->sw_revision_1(v); break;
+    case 1: this->sw_revision_2(v); break;
+    case 2: this->sw_revision_3(v); break;
+    case 3: this->sw_revision_4(v); break;
+    default: assert(false && "Index out of range"); break;
+    }
+    return *this;
+  }
+  /// Returns byte \p index of the software revision level.
+  /// \param index  The index of the byte to be returned. Must be less than 4.
+  /// \returns Byte \p index of the software revision level.
+  [[nodiscard]] constexpr adt::uinteger_t<7> sw_revision(std::size_t const index) const noexcept {
+    switch (index) {
+    case 0: return this->sw_revision_1();
+    case 1: return this->sw_revision_2();
+    case 2: return this->sw_revision_3();
+    case 3: return this->sw_revision_4();
+    default: assert(false && "Index out of range"); return 0;
+    }
+  }
+  /// Returns the software revision level.
+  /// \returns The 4 bytes of the software revision level.
+  [[nodiscard]] constexpr std::array<adt::uinteger_t<7>, 4> sw_revision() const noexcept {
+    return {this->sw_revision_1(), this->sw_revision_2(), this->sw_revision_3(), this->sw_revision_4()};
+  }
+
+  /// Copies the software revision level from an initializer list into the message. Any bytes not given a value are
+  ///   set to zero.
+  /// \tparam T  An integral type.
+  /// \param vs  The bytes to be copied. At most 4 values are copied.
+  /// \returns *this
+  template <std::integral T> constexpr device_identity_notification& sw_revision(std::initializer_list<T> vs) {
+    assert(vs.size() <= 4 && "initializer list has too many members");
+    return this->sw_revision(vs.begin(), vs.end());
+  }
+  /// Copies the software revision level from a range into the message. Any bytes not given a value are set to zero.
+  /// \tparam Range  An input range whose elements are integral once \p Proj has been applied.
+  /// \tparam Proj  The type of the projection applied to each element of the range.
+  /// \param range  The bytes to be copied. At most 4 values are copied.
+  /// \param proj  A projection applied to each element of the range.
+  /// \returns *this
+  template <std::ranges::input_range Range, typename Proj = std::identity>
+    requires std::is_integral_v<::midi2::ump::details::projected_value_t<Range, Proj>>
+  constexpr device_identity_notification& sw_revision(Range&& range, Proj proj = {}) {
+    ::midi2::ump::details::set_fields<7, 4>(
+        std::ranges::begin(range), std::ranges::end(range), proj,
+        [this](std::size_t const index, adt::uinteger_t<7> const v) { this->sw_revision(index, v); });
+    return *this;
+  }
+  /// Copies the software revision level from the iterator range [\p first, \p last) into the message. Any bytes not
+  ///   given a value are set to zero.
+  /// \tparam I  An input iterator type whose value type is integral.
+  /// \tparam S  A sentinel type for \p I.
+  /// \param first  The beginning of the range of bytes to be copied.
+  /// \param last  The end of the range of bytes to be copied. At most 4 values are copied.
+  /// \returns *this
+  template <std::input_iterator I, std::sentinel_for<I> S>
+    requires std::is_integral_v<std::remove_cvref_t<typename std::iterator_traits<I>::value_type>>
+  constexpr device_identity_notification& sw_revision(I first, S last) {
+    ::midi2::ump::details::set_fields<7, 4>(
+        std::move(first), std::move(last), std::identity{},
+        [this](std::size_t const index, adt::uinteger_t<7> const v) { this->sw_revision(index, v); });
+    return *this;
+  }
+
 private:
   friend struct ::std::tuple_size<device_identity_notification>;
   template <std::size_t I, typename T> friend struct ::std::tuple_element;
@@ -5896,7 +6128,164 @@ public:
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word3, name14, ump::stream::endpoint_name_notification)
 
+  /// The type of the name bytes held by the message: UTF-8 code units.
+  using value_type = char8_t;
+  /// An unsigned integer type used to represent sizes and indices.
+  using size_type = std::size_t;
+  /// A signed integer type used to represent the distance between two iterators.
+  using difference_type = std::ptrdiff_t;
+  /// A random-access iterator over the name bytes of the message.
+  using iterator = ::midi2::ump::details::iterator_base<endpoint_name_notification>;
+  /// A random-access iterator over the name bytes of a const message.
+  using const_iterator = ::midi2::ump::details::iterator_base<endpoint_name_notification const>;
+
+  /// \returns An iterator referring to the first name byte.
+  [[nodiscard]] constexpr auto begin() noexcept { return iterator{*this, 0}; }
+  /// \returns A const iterator referring to the first name byte.
+  [[nodiscard]] constexpr auto begin() const noexcept { return const_iterator{*this, 0}; }
+  /// \returns A const iterator referring to the first name byte.
+  [[nodiscard]] constexpr auto cbegin() const noexcept { return const_iterator{*this, 0}; }
+
+  /// \returns An iterator referring to the position after the last name byte.
+  [[nodiscard]] constexpr auto end() noexcept { return iterator{*this, this->size()}; }
+  /// \returns A const iterator referring to the position after the last name byte.
+  [[nodiscard]] constexpr auto end() const noexcept { return const_iterator{*this, this->size()}; }
+  /// \returns A const iterator referring to the position after the last name byte.
+  [[nodiscard]] constexpr auto cend() const noexcept { return const_iterator{*this, this->size()}; }
+
+  /// \returns The maximum number of name bytes that the message can hold.
+  // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+  [[nodiscard]] constexpr size_type max_size() const noexcept { return 14U; }
+  /// Counts the name bytes in the message. The name ends at the first zero byte, or after max_size() bytes if there is
+  ///   no zero byte.
+  /// \returns The number of name bytes held by the message.
+  [[nodiscard]] constexpr size_type size() const noexcept {
+    auto index = size_type{0};
+    for (auto const limit = this->max_size(); index < limit && this->name(index) != u8'\0'; ++index) {
+    }
+    return index;
+  }
+  /// \returns True if the message contains no name bytes, false otherwise.
+  [[nodiscard]] constexpr bool empty() const noexcept { return this->name(0) == u8'\0'; }
+
+#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
+  /// Provides access to the name byte at position \p idx.
+  /// \param self  The message object.
+  /// \param idx  The index of the name byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read or assign the name byte.
+  constexpr decltype(auto) operator[](this auto& self, std::size_t idx) noexcept {
+    return midi2::ump::details::array_subscript_proxy<std::remove_reference_t<decltype(self)>>{self, idx};
+  }
+#else
+  /// Provides access to the name byte at position \p idx.
+  /// \param idx  The index of the name byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read or assign the name byte.
+  constexpr decltype(auto) operator[](std::size_t idx) noexcept {
+    return midi2::ump::details::array_subscript_proxy<endpoint_name_notification>{*this, idx};
+  }
+  /// Provides read-only access to the name byte at position \p idx.
+  /// \param idx  The index of the name byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read the name byte.
+  constexpr decltype(auto) operator[](std::size_t idx) const noexcept {
+    return midi2::ump::details::array_subscript_proxy<endpoint_name_notification const>{*this, idx};
+  }
+#endif
+
+  /// Sets the name byte at position \p index.
+  /// \param index  The index of the name byte to be set. Must be less than max_size().
+  /// \param v  The value to be stored.
+  /// \returns *this
+  constexpr endpoint_name_notification& name(std::size_t const index, value_type const v) noexcept {
+    switch (index) {
+    case 0: this->name1(v); break;
+    case 1: this->name2(v); break;
+    case 2: this->name3(v); break;
+    case 3: this->name4(v); break;
+    case 4: this->name5(v); break;
+    case 5: this->name6(v); break;
+    case 6: this->name7(v); break;
+    case 7: this->name8(v); break;
+    case 8: this->name9(v); break;
+    case 9: this->name10(v); break;
+    case 10: this->name11(v); break;
+    case 11: this->name12(v); break;
+    case 12: this->name13(v); break;
+    case 13: this->name14(v); break;
+    default: assert(false && "Index out of range"); break;
+    }
+    return *this;
+  }
+  /// Returns the name byte at position \p index.
+  /// \param index  The index of the name byte to be returned. Must be less than max_size().
+  /// \returns The name byte at position \p index.
+  [[nodiscard]] constexpr value_type name(std::size_t const index) const noexcept {
+    switch (index) {
+    case 0: return this->name1();
+    case 1: return this->name2();
+    case 2: return this->name3();
+    case 3: return this->name4();
+    case 4: return this->name5();
+    case 5: return this->name6();
+    case 6: return this->name7();
+    case 7: return this->name8();
+    case 8: return this->name9();
+    case 9: return this->name10();
+    case 10: return this->name11();
+    case 11: return this->name12();
+    case 12: return this->name13();
+    case 13: return this->name14();
+    default: assert(false && "Index out of range"); return 0;
+    }
+  }
+
+  /// Copies name bytes from an initializer list into the message. Any unused bytes are set to zero.
+  /// \tparam T  An integral type which converts to char8_t.
+  /// \param vs  The name bytes to be copied. At most max_size() values are copied.
+  /// \returns *this
+  template <std::integral T>
+    requires std::is_convertible_v<T, char8_t>
+  constexpr endpoint_name_notification& name(std::initializer_list<T> vs) {
+    return this->zero_fill(::midi2::ump::details::data_helper<endpoint_name_notification, 8U>::data(*this, vs));
+  }
+
+  /// Copies name bytes from a range into the message. Any unused bytes are set to zero.
+  /// \tparam Range  An input range whose elements convert to char8_t once \p Proj has been applied.
+  /// \tparam Proj  The type of the projection applied to each element of the range.
+  /// \param range  The name bytes to be copied. At most max_size() values are copied.
+  /// \param proj  A projection applied to each element of the range.
+  /// \returns *this
+  template <std::ranges::input_range Range, typename Proj = std::identity>
+    requires std::is_convertible_v<::midi2::ump::details::projected_value_t<Range, Proj>, char8_t>
+  constexpr endpoint_name_notification& name(Range&& range, Proj proj = {}) {
+    return this->zero_fill(::midi2::ump::details::data_helper<endpoint_name_notification, 8U>::data(
+        *this, std::forward<Range>(range), proj));
+  }
+
+  /// Copies name bytes from the iterator range [\p first, \p last) into the message. Any unused bytes are set to
+  ///   zero.
+  /// \tparam I  An input iterator type whose value type converts to char8_t.
+  /// \tparam S  A sentinel type for \p I.
+  /// \param first  The beginning of the range of name bytes to be copied.
+  /// \param last  The end of the range of name bytes to be copied.
+  /// \returns *this
+  template <std::input_iterator I, std::sentinel_for<I> S>
+    requires std::is_convertible_v<std::remove_cvref_t<typename std::iterator_traits<I>::value_type>, char8_t>
+  constexpr endpoint_name_notification& name(I first, S last) {
+    return this->zero_fill(
+        ::midi2::ump::details::data_helper<endpoint_name_notification, 8U>::data(*this, first, last));
+  }
+
 private:
+  /// Sets the name bytes from position \p index to the end of the message to zero.
+  /// \param index  The index of the first name byte to be set to zero.
+  /// \returns *this
+  constexpr endpoint_name_notification& zero_fill(std::size_t const index) noexcept {
+    for (auto pos = index, limit = this->max_size(); pos < limit; ++pos) {
+      this->name(pos, u8'\0');
+    }
+    return *this;
+  }
+
   friend struct ::std::tuple_size<endpoint_name_notification>;
   template <std::size_t I, typename T> friend struct ::std::tuple_element;
   template <std::size_t I, typename T> friend auto const& get(T const&) noexcept;
@@ -5913,6 +6302,11 @@ private:
 MIDI2_UMP_TUPLE(stream, endpoint_name_notification)
 // Define the span constructor for stream/endpoint_name_notification
 MIDI2_SPAN_CTOR(stream, endpoint_name_notification)
+
+static_assert(std::random_access_iterator<midi2::ump::stream::endpoint_name_notification::iterator>,
+              "endpoint_name_notification::iterator should meet the requirements of std::random_access_iterator");
+static_assert(std::random_access_iterator<midi2::ump::stream::endpoint_name_notification::const_iterator>,
+              "endpoint_name_notification::const_iterator should meet the requirements of std::random_access_iterator");
 
 // 7.1.5 Product Instance ID Notification Message
 /// \brief The Product Instance Id Notification message (section 7.1.5).
@@ -6155,7 +6549,164 @@ public:
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word3, pid14, ump::stream::product_instance_id_notification)
 
+  /// The type of the ID bytes held by the message: ASCII characters.
+  using value_type = char8_t;
+  /// An unsigned integer type used to represent sizes and indices.
+  using size_type = std::size_t;
+  /// A signed integer type used to represent the distance between two iterators.
+  using difference_type = std::ptrdiff_t;
+  /// A random-access iterator over the ID bytes of the message.
+  using iterator = ::midi2::ump::details::iterator_base<product_instance_id_notification>;
+  /// A random-access iterator over the ID bytes of a const message.
+  using const_iterator = ::midi2::ump::details::iterator_base<product_instance_id_notification const>;
+
+  /// \returns An iterator referring to the first ID byte.
+  [[nodiscard]] constexpr auto begin() noexcept { return iterator{*this, 0}; }
+  /// \returns A const iterator referring to the first ID byte.
+  [[nodiscard]] constexpr auto begin() const noexcept { return const_iterator{*this, 0}; }
+  /// \returns A const iterator referring to the first ID byte.
+  [[nodiscard]] constexpr auto cbegin() const noexcept { return const_iterator{*this, 0}; }
+
+  /// \returns An iterator referring to the position after the last ID byte.
+  [[nodiscard]] constexpr auto end() noexcept { return iterator{*this, this->size()}; }
+  /// \returns A const iterator referring to the position after the last ID byte.
+  [[nodiscard]] constexpr auto end() const noexcept { return const_iterator{*this, this->size()}; }
+  /// \returns A const iterator referring to the position after the last ID byte.
+  [[nodiscard]] constexpr auto cend() const noexcept { return const_iterator{*this, this->size()}; }
+
+  /// \returns The maximum number of ID bytes that the message can hold.
+  // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+  [[nodiscard]] constexpr size_type max_size() const noexcept { return 14U; }
+  /// Counts the ID bytes in the message. The ID ends at the first zero byte, or after max_size() bytes if there is
+  ///   no zero byte.
+  /// \returns The number of ID bytes held by the message.
+  [[nodiscard]] constexpr size_type size() const noexcept {
+    auto index = size_type{0};
+    for (auto const limit = this->max_size(); index < limit && this->pid(index) != u8'\0'; ++index) {
+    }
+    return index;
+  }
+  /// \returns True if the message contains no ID bytes, false otherwise.
+  [[nodiscard]] constexpr bool empty() const noexcept { return this->pid(0) == u8'\0'; }
+
+#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
+  /// Provides access to the ID byte at position \p idx.
+  /// \param self  The message object.
+  /// \param idx  The index of the ID byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read or assign the ID byte.
+  constexpr decltype(auto) operator[](this auto& self, std::size_t idx) noexcept {
+    return midi2::ump::details::array_subscript_proxy<std::remove_reference_t<decltype(self)>>{self, idx};
+  }
+#else
+  /// Provides access to the ID byte at position \p idx.
+  /// \param idx  The index of the ID byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read or assign the ID byte.
+  constexpr decltype(auto) operator[](std::size_t idx) noexcept {
+    return midi2::ump::details::array_subscript_proxy<product_instance_id_notification>{*this, idx};
+  }
+  /// Provides read-only access to the ID byte at position \p idx.
+  /// \param idx  The index of the ID byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read the ID byte.
+  constexpr decltype(auto) operator[](std::size_t idx) const noexcept {
+    return midi2::ump::details::array_subscript_proxy<product_instance_id_notification const>{*this, idx};
+  }
+#endif
+
+  /// Sets the ID byte at position \p index.
+  /// \param index  The index of the ID byte to be set. Must be less than max_size().
+  /// \param v  The value to be stored.
+  /// \returns *this
+  constexpr product_instance_id_notification& pid(std::size_t const index, value_type const v) noexcept {
+    switch (index) {
+    case 0: this->pid1(v); break;
+    case 1: this->pid2(v); break;
+    case 2: this->pid3(v); break;
+    case 3: this->pid4(v); break;
+    case 4: this->pid5(v); break;
+    case 5: this->pid6(v); break;
+    case 6: this->pid7(v); break;
+    case 7: this->pid8(v); break;
+    case 8: this->pid9(v); break;
+    case 9: this->pid10(v); break;
+    case 10: this->pid11(v); break;
+    case 11: this->pid12(v); break;
+    case 12: this->pid13(v); break;
+    case 13: this->pid14(v); break;
+    default: assert(false && "Index out of range"); break;
+    }
+    return *this;
+  }
+  /// Returns the ID byte at position \p index.
+  /// \param index  The index of the ID byte to be returned. Must be less than max_size().
+  /// \returns The ID byte at position \p index.
+  [[nodiscard]] constexpr value_type pid(std::size_t const index) const noexcept {
+    switch (index) {
+    case 0: return this->pid1();
+    case 1: return this->pid2();
+    case 2: return this->pid3();
+    case 3: return this->pid4();
+    case 4: return this->pid5();
+    case 5: return this->pid6();
+    case 6: return this->pid7();
+    case 7: return this->pid8();
+    case 8: return this->pid9();
+    case 9: return this->pid10();
+    case 10: return this->pid11();
+    case 11: return this->pid12();
+    case 12: return this->pid13();
+    case 13: return this->pid14();
+    default: assert(false && "Index out of range"); return 0;
+    }
+  }
+
+  /// Copies ID bytes from an initializer list into the message. Any unused bytes are set to zero.
+  /// \tparam T  An integral type which converts to char8_t.
+  /// \param vs  The ID bytes to be copied. At most max_size() values are copied.
+  /// \returns *this
+  template <std::integral T>
+    requires std::is_convertible_v<T, char8_t>
+  constexpr product_instance_id_notification& pid(std::initializer_list<T> vs) {
+    return this->zero_fill(::midi2::ump::details::data_helper<product_instance_id_notification, 8U>::data(*this, vs));
+  }
+
+  /// Copies ID bytes from a range into the message. Any unused bytes are set to zero.
+  /// \tparam Range  An input range whose elements convert to char8_t once \p Proj has been applied.
+  /// \tparam Proj  The type of the projection applied to each element of the range.
+  /// \param range  The ID bytes to be copied. At most max_size() values are copied.
+  /// \param proj  A projection applied to each element of the range.
+  /// \returns *this
+  template <std::ranges::input_range Range, typename Proj = std::identity>
+    requires std::is_convertible_v<::midi2::ump::details::projected_value_t<Range, Proj>, char8_t>
+  constexpr product_instance_id_notification& pid(Range&& range, Proj proj = {}) {
+    return this->zero_fill(::midi2::ump::details::data_helper<product_instance_id_notification, 8U>::data(
+        *this, std::forward<Range>(range), proj));
+  }
+
+  /// Copies ID bytes from the iterator range [\p first, \p last) into the message. Any unused bytes are set to
+  ///   zero.
+  /// \tparam I  An input iterator type whose value type converts to char8_t.
+  /// \tparam S  A sentinel type for \p I.
+  /// \param first  The beginning of the range of ID bytes to be copied.
+  /// \param last  The end of the range of ID bytes to be copied.
+  /// \returns *this
+  template <std::input_iterator I, std::sentinel_for<I> S>
+    requires std::is_convertible_v<std::remove_cvref_t<typename std::iterator_traits<I>::value_type>, char8_t>
+  constexpr product_instance_id_notification& pid(I first, S last) {
+    return this->zero_fill(
+        ::midi2::ump::details::data_helper<product_instance_id_notification, 8U>::data(*this, first, last));
+  }
+
 private:
+  /// Sets the ID bytes from position \p index to the end of the message to zero.
+  /// \param index  The index of the first ID byte to be set to zero.
+  /// \returns *this
+  constexpr product_instance_id_notification& zero_fill(std::size_t const index) noexcept {
+    for (auto pos = index, limit = this->max_size(); pos < limit; ++pos) {
+      this->pid(pos, u8'\0');
+    }
+    return *this;
+  }
+
   friend struct ::std::tuple_size<product_instance_id_notification>;
   template <std::size_t I, typename T> friend struct ::std::tuple_element;
   template <std::size_t I, typename T> friend auto const& get(T const&) noexcept;
@@ -6172,6 +6723,12 @@ private:
 MIDI2_UMP_TUPLE(stream, product_instance_id_notification)
 // Define the span constructor for stream/product_instance_id_notification
 MIDI2_SPAN_CTOR(stream, product_instance_id_notification)
+
+static_assert(std::random_access_iterator<midi2::ump::stream::product_instance_id_notification::iterator>,
+              "product_instance_id_notification::iterator should meet the requirements of std::random_access_iterator");
+static_assert(
+    std::random_access_iterator<midi2::ump::stream::product_instance_id_notification::const_iterator>,
+    "product_instance_id_notification::const_iterator should meet the requirements of std::random_access_iterator");
 
 // 7.1.6 Selecting a MIDI Protocol and Jitter Reduction Timestamps for a UMP Stream
 // 7.1.6.1 Steps to Select Protocol and Jitter Reduction Timestamps
@@ -6659,6 +7216,19 @@ public:
   /// \param v  The value to be assigned to the word3::value3 field.
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word3, value3, ump::stream::function_block_discovery)
+
+  /// The Filter bitmap is used by the requesting Device to specify the information to be retrieved.
+  enum class filter_mask : std::uint8_t {
+    info = 1U << 0U,  ///< Requesting a Function Block Info Notification
+    name = 1U << 1U,  ///< Requesting a Function Block Name Notification
+  };
+
+  /// \param bitmap  The filter_mask to be tested
+  /// \returns true if the message's filter mark specified the field given by \p bitmap
+  [[nodiscard]] constexpr bool filter_requests(filter_mask const bitmap) const noexcept {
+    return (static_cast<std::byte>(this->filter()) & static_cast<std::byte>(std::to_underlying(bitmap))) !=
+           std::byte{0U};
+  }
 
 private:
   friend struct ::std::tuple_size<function_block_discovery>;
@@ -7150,7 +7720,162 @@ public:
   /// \returns *this
   MIDI2_UMP_GETTER_SETTER(word3, name12, ump::stream::function_block_name_notification)
 
+  /// The type of the name bytes held by the message: UTF-8 code units.
+  using value_type = char8_t;
+  /// An unsigned integer type used to represent sizes and indices.
+  using size_type = std::size_t;
+  /// A signed integer type used to represent the distance between two iterators.
+  using difference_type = std::ptrdiff_t;
+  /// A random-access iterator over the name bytes of the message.
+  using iterator = ::midi2::ump::details::iterator_base<function_block_name_notification>;
+  /// A random-access iterator over the name bytes of a const message.
+  using const_iterator = ::midi2::ump::details::iterator_base<function_block_name_notification const>;
+
+  /// \returns An iterator referring to the first name byte.
+  [[nodiscard]] constexpr auto begin() noexcept { return iterator{*this, 0}; }
+  /// \returns A const iterator referring to the first name byte.
+  [[nodiscard]] constexpr auto begin() const noexcept { return const_iterator{*this, 0}; }
+  /// \returns A const iterator referring to the first name byte.
+  [[nodiscard]] constexpr auto cbegin() const noexcept { return const_iterator{*this, 0}; }
+
+  /// \returns An iterator referring to the position after the last name byte.
+  [[nodiscard]] constexpr auto end() noexcept { return iterator{*this, this->size()}; }
+  /// \returns A const iterator referring to the position after the last name byte.
+  [[nodiscard]] constexpr auto end() const noexcept { return const_iterator{*this, this->size()}; }
+  /// \returns A const iterator referring to the position after the last name byte.
+  [[nodiscard]] constexpr auto cend() const noexcept { return const_iterator{*this, this->size()}; }
+
+  /// \returns The maximum number of name bytes that the message can hold.
+  // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+  [[nodiscard]] constexpr size_type max_size() const noexcept { return 13U; }
+  /// Counts the name bytes in the message. The name ends at the first zero byte, or after max_size() bytes if there is
+  ///   no zero byte.
+  /// \returns The number of name bytes held by the message.
+  [[nodiscard]] constexpr size_type size() const noexcept {
+    auto index = size_type{0};
+    for (auto const limit = this->max_size(); index < limit && this->name(index) != u8'\0'; ++index) {
+    }
+    return index;
+  }
+  /// \returns True if the message contains no name bytes, false otherwise.
+  [[nodiscard]] constexpr bool empty() const noexcept { return this->name(0) == u8'\0'; }
+
+#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
+  /// Provides access to the name byte at position \p idx.
+  /// \param self  The message object.
+  /// \param idx  The index of the name byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read or assign the name byte.
+  constexpr decltype(auto) operator[](this auto& self, std::size_t idx) noexcept {
+    return midi2::ump::details::array_subscript_proxy<std::remove_reference_t<decltype(self)>>{self, idx};
+  }
+#else
+  /// Provides access to the name byte at position \p idx.
+  /// \param idx  The index of the name byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read or assign the name byte.
+  constexpr decltype(auto) operator[](std::size_t idx) noexcept {
+    return midi2::ump::details::array_subscript_proxy<function_block_name_notification>{*this, idx};
+  }
+  /// Provides read-only access to the name byte at position \p idx.
+  /// \param idx  The index of the name byte to be accessed. Must be less than max_size().
+  /// \returns A proxy object which can be used to read the name byte.
+  constexpr decltype(auto) operator[](std::size_t idx) const noexcept {
+    return midi2::ump::details::array_subscript_proxy<function_block_name_notification const>{*this, idx};
+  }
+#endif
+
+  /// Sets the name byte at position \p index.
+  /// \param index  The index of the name byte to be set. Must be less than max_size().
+  /// \param v  The value to be stored.
+  /// \returns *this
+  constexpr function_block_name_notification& name(std::size_t const index, value_type const v) noexcept {
+    switch (index) {
+    case 0: this->name0(v); break;
+    case 1: this->name1(v); break;
+    case 2: this->name2(v); break;
+    case 3: this->name3(v); break;
+    case 4: this->name4(v); break;
+    case 5: this->name5(v); break;
+    case 6: this->name6(v); break;
+    case 7: this->name7(v); break;
+    case 8: this->name8(v); break;
+    case 9: this->name9(v); break;
+    case 10: this->name10(v); break;
+    case 11: this->name11(v); break;
+    case 12: this->name12(v); break;
+    default: assert(false && "Index out of range"); break;
+    }
+    return *this;
+  }
+  /// Returns the name byte at position \p index.
+  /// \param index  The index of the name byte to be returned. Must be less than max_size().
+  /// \returns The name byte at position \p index.
+  [[nodiscard]] constexpr value_type name(std::size_t const index) const noexcept {
+    switch (index) {
+    case 0: return this->name0();
+    case 1: return this->name1();
+    case 2: return this->name2();
+    case 3: return this->name3();
+    case 4: return this->name4();
+    case 5: return this->name5();
+    case 6: return this->name6();
+    case 7: return this->name7();
+    case 8: return this->name8();
+    case 9: return this->name9();
+    case 10: return this->name10();
+    case 11: return this->name11();
+    case 12: return this->name12();
+    default: assert(false && "Index out of range"); return 0;
+    }
+  }
+
+  /// Copies name bytes from an initializer list into the message. Any unused bytes are set to zero.
+  /// \tparam T  An integral type which converts to char8_t.
+  /// \param vs  The name bytes to be copied. At most max_size() values are copied.
+  /// \returns *this
+  template <std::integral T>
+    requires std::is_convertible_v<T, char8_t>
+  constexpr function_block_name_notification& name(std::initializer_list<T> vs) {
+    return this->zero_fill(::midi2::ump::details::data_helper<function_block_name_notification, 8U>::data(*this, vs));
+  }
+
+  /// Copies name bytes from a range into the message. Any unused bytes are set to zero.
+  /// \tparam Range  An input range whose elements convert to char8_t once \p Proj has been applied.
+  /// \tparam Proj  The type of the projection applied to each element of the range.
+  /// \param range  The name bytes to be copied. At most max_size() values are copied.
+  /// \param proj  A projection applied to each element of the range.
+  /// \returns *this
+  template <std::ranges::input_range Range, typename Proj = std::identity>
+    requires std::is_convertible_v<::midi2::ump::details::projected_value_t<Range, Proj>, char8_t>
+  constexpr function_block_name_notification& name(Range&& range, Proj proj = {}) {
+    return this->zero_fill(::midi2::ump::details::data_helper<function_block_name_notification, 8U>::data(
+        *this, std::forward<Range>(range), proj));
+  }
+
+  /// Copies name bytes from the iterator range [\p first, \p last) into the message. Any unused bytes are set to
+  ///   zero.
+  /// \tparam I  An input iterator type whose value type converts to char8_t.
+  /// \tparam S  A sentinel type for \p I.
+  /// \param first  The beginning of the range of name bytes to be copied.
+  /// \param last  The end of the range of name bytes to be copied.
+  /// \returns *this
+  template <std::input_iterator I, std::sentinel_for<I> S>
+    requires std::is_convertible_v<std::remove_cvref_t<typename std::iterator_traits<I>::value_type>, char8_t>
+  constexpr function_block_name_notification& name(I first, S last) {
+    return this->zero_fill(
+        ::midi2::ump::details::data_helper<function_block_name_notification, 8U>::data(*this, first, last));
+  }
+
 private:
+  /// Sets the name bytes from position \p index to the end of the message to zero.
+  /// \param index  The index of the first name byte to be set to zero.
+  /// \returns *this
+  constexpr function_block_name_notification& zero_fill(std::size_t const index) noexcept {
+    for (auto pos = index, limit = this->max_size(); pos < limit; ++pos) {
+      this->name(pos, u8'\0');
+    }
+    return *this;
+  }
+
   friend struct ::std::tuple_size<function_block_name_notification>;
   template <std::size_t I, typename T> friend struct ::std::tuple_element;
   template <std::size_t I, typename T> friend auto const& get(T const&) noexcept;
@@ -7167,6 +7892,12 @@ private:
 MIDI2_UMP_TUPLE(stream, function_block_name_notification)
 // Define the span constructor for stream/function_block_name_notification
 MIDI2_SPAN_CTOR(stream, function_block_name_notification)
+
+static_assert(std::random_access_iterator<midi2::ump::stream::function_block_name_notification::iterator>,
+              "function_block_name_notification::iterator should meet the requirements of std::random_access_iterator");
+static_assert(
+    std::random_access_iterator<midi2::ump::stream::function_block_name_notification::const_iterator>,
+    "function_block_name_notification::const_iterator should meet the requirements of std::random_access_iterator");
 
 // 7.1.10 Start of Clip Message
 /// \brief The Start of Clip message (section 7.1.10).

@@ -71,9 +71,11 @@ jobs:
                 -D "CMAKE_CXX_COMPILER=clang++-${CLANG_VERSION}" \
                 -D MIDI2_DEMO=yes
 
+      # The workbench_device demo uses CoreMIDI and is built only on macOS. It is not in compile_commands.json here, so
+      # clang-tidy would analyze it without the SDK headers and report spurious warnings.
       - name: Run clang-tidy
         run: |
-          find . -name \*.cpp -not \( -path "./${BUILD_DIR}/*" -or -path "./googletest/*" -or -path "./icubaby/*" -or -path "./benchmark/*" \) -print0 | \
+          find . -name \*.cpp -not \( -path "./${BUILD_DIR}/*" -or -path "./googletest/*" -or -path "./icubaby/*" -or -path "./benchmark/*" -or -path "./demo/workbench_device/*" \) -print0 | \
           xargs -0 -I % "clang-tidy-${CLANG_VERSION}" "-p=${BUILD_DIR}/compile_commands.json" -header-filter=.* % | \
           tee -a "${CLANG_TIDY_OUT}"
 

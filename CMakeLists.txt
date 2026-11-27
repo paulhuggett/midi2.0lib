@@ -120,7 +120,7 @@ if(MIDI2_DEMO)
   FetchContent_Declare(
     peejay
     GIT_REPOSITORY https://github.com/paulhuggett/peejay.git
-    GIT_TAG v2.2
+    GIT_TAG v2.2.1
     GIT_SHALLOW Yes
   )
   # The compressed Property Exchange demo uses zlib to inflate property data. It needs only the static library: not

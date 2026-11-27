@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <ranges>
 #include <tuple>
+#include <vector>
 
 // Google test
 #include <gmock/gmock.h>
@@ -687,6 +688,511 @@ TEST(UMPTypesTextCommon, FromStringTooLong) {
   EXPECT_EQ(message[9], 'j');
   EXPECT_EQ(message[10], 'k');
   EXPECT_EQ(message[11], 'l');
+}
+
+TEST(UMPTypesEndpointName, MaxSize) {
+  EXPECT_EQ(midi2::ump::stream::endpoint_name_notification{}.max_size(), 14U);
+}
+TEST(UMPTypesEndpointName, DefaultIsEmpty) {
+  constexpr auto message = midi2::ump::stream::endpoint_name_notification{};
+  EXPECT_TRUE(message.empty());
+  EXPECT_EQ(message.size(), 0U);
+  EXPECT_EQ(message.begin(), message.end());
+}
+TEST(UMPTypesEndpointName, InitializerList) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  constexpr auto message = endpoint_name_notification{}.name({'a', 'b', 'c'});
+  EXPECT_FALSE(message.empty());
+  ASSERT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[0], u8'a');
+  EXPECT_EQ(message[1], u8'b');
+  EXPECT_EQ(message[2], u8'c');
+  for (auto index = std::size_t{3}; index < message.max_size(); ++index) {
+    EXPECT_EQ(message[index], u8'\0') << "index " << index;
+  }
+}
+// The name bytes are, in order, the fields name1 to name14 which are spread across all four words.
+TEST(UMPTypesEndpointName, InitializerListMaxLength) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  constexpr auto message =
+      endpoint_name_notification{}.name({'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n'});
+  EXPECT_EQ(message.size(), 14U);
+  EXPECT_EQ(message.name1(), 'a');
+  EXPECT_EQ(message.name2(), 'b');
+  EXPECT_EQ(message.name3(), 'c');
+  EXPECT_EQ(message.name6(), 'f');
+  EXPECT_EQ(message.name7(), 'g');
+  EXPECT_EQ(message.name10(), 'j');
+  EXPECT_EQ(message.name11(), 'k');
+  EXPECT_EQ(message.name14(), 'n');
+  EXPECT_EQ(std::uint32_t{get<0>(message)} & 0xFFFFU, 0x6162U);
+  EXPECT_EQ(std::uint32_t{get<1>(message)}, 0x63646566U);
+  EXPECT_EQ(std::uint32_t{get<2>(message)}, 0x6768696AU);
+  EXPECT_EQ(std::uint32_t{get<3>(message)}, 0x6B6C6D6EU);
+}
+TEST(UMPTypesEndpointName, NameFromRange) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto const message = endpoint_name_notification{}.name(u8"Demo"sv);
+  ASSERT_EQ(message.size(), 4U);
+  EXPECT_TRUE(std::ranges::equal(message, u8"Demo"sv));
+}
+TEST(UMPTypesEndpointName, NameFromRangeTruncatesAtMaxSize) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto const message = endpoint_name_notification{}.name(u8"abcdefghijklmnopqrstuvwxyz"sv);
+  ASSERT_EQ(message.size(), 14U);
+  EXPECT_TRUE(std::ranges::equal(message, u8"abcdefghijklmn"sv));
+}
+TEST(UMPTypesEndpointName, NameFromRangeWithProjection) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  constexpr std::array src{std::byte{'x'}, std::byte{'y'}};
+  auto const message = endpoint_name_notification{}.name(
+      src, [](std::byte const b) { return static_cast<char8_t>(std::to_integer<std::uint8_t>(b)); });
+  ASSERT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], u8'x');
+  EXPECT_EQ(message[1], u8'y');
+}
+TEST(UMPTypesEndpointName, NameFromTransformedRange) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  constexpr std::array src{'A', 'B', 'C'};
+  auto const message =
+      endpoint_name_notification{}.name(src | std::views::transform([](char const c) { return c + ('a' - 'A'); }));
+  ASSERT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[0], u8'a');
+  EXPECT_EQ(message[2], u8'c');
+}
+TEST(UMPTypesEndpointName, NameSetByIteratorSentinel) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  constexpr auto str = u8"hello"sv;
+  constexpr auto message = endpoint_name_notification{}.name(std::begin(str), std::end(str));
+  ASSERT_EQ(message.size(), 5U);
+  EXPECT_TRUE(std::ranges::equal(message, str));
+}
+// Setting a shorter name zeroes the bytes left over from a longer one.
+TEST(UMPTypesEndpointName, ShorterNameClearsTheRest) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto message =
+      endpoint_name_notification{}.name({'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n'});
+  message.name({'x', 'y'});
+  ASSERT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], u8'x');
+  EXPECT_EQ(message[1], u8'y');
+  for (auto index = std::size_t{2}; index < message.max_size(); ++index) {
+    EXPECT_EQ(message[index], u8'\0') << "index " << index;
+  }
+}
+// Setting the name leaves the other fields alone.
+TEST(UMPTypesEndpointName, NameKeepsFormat) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto const message = endpoint_name_notification{}.format(0x1).name({'a'});
+  EXPECT_EQ(message.format(), 0x1U);
+  EXPECT_EQ(message.name1(), 'a');
+}
+TEST(UMPTypesEndpointName, IndexedName) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto message = endpoint_name_notification{};
+  message.name(0, u8'p').name(13, u8'q');
+  EXPECT_EQ(message.name(0), u8'p');
+  EXPECT_EQ(message.name1(), 'p');
+  EXPECT_EQ(message.name(13), u8'q');
+  EXPECT_EQ(message.name14(), 'q');
+}
+TEST(UMPTypesEndpointName, SubscriptWrite) {
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto message = endpoint_name_notification{};
+  message[0] = u8'h';
+  message[1] = u8'i';
+  message[1] = message[0];
+  EXPECT_EQ(message.size(), 2U);
+  EXPECT_EQ(message.name1(), 'h');
+  EXPECT_EQ(message.name2(), 'h');
+  auto const& cmessage = message;
+  EXPECT_EQ(cmessage[0], u8'h');
+}
+TEST(UMPTypesEndpointName, IteratorWriteUsingAlgorithm) {
+  using testing::ElementsAreArray;
+  using endpoint_name_notification = midi2::ump::stream::endpoint_name_notification;
+  auto message = endpoint_name_notification{};
+  constexpr std::array src{u8'a', u8'b', u8'c', u8'd'};
+  std::ranges::copy(src, message.begin());
+  EXPECT_THAT(message, ElementsAreArray(src));
+}
+
+TEST(UMPTypesProductInstanceId, MaxSize) {
+  EXPECT_EQ(midi2::ump::stream::product_instance_id_notification{}.max_size(), 14U);
+}
+TEST(UMPTypesProductInstanceId, DefaultIsEmpty) {
+  constexpr auto message = midi2::ump::stream::product_instance_id_notification{};
+  EXPECT_TRUE(message.empty());
+  EXPECT_EQ(message.size(), 0U);
+  EXPECT_EQ(message.begin(), message.end());
+}
+TEST(UMPTypesProductInstanceId, InitializerList) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  constexpr auto message = product_instance_id_notification{}.pid({'a', 'b', 'c'});
+  EXPECT_FALSE(message.empty());
+  ASSERT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[0], u8'a');
+  EXPECT_EQ(message[1], u8'b');
+  EXPECT_EQ(message[2], u8'c');
+  for (auto index = std::size_t{3}; index < message.max_size(); ++index) {
+    EXPECT_EQ(message[index], u8'\0') << "index " << index;
+  }
+}
+// The ID bytes are, in order, the fields pid1 to pid14 which are spread across all four words.
+TEST(UMPTypesProductInstanceId, InitializerListMaxLength) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  constexpr auto message =
+      product_instance_id_notification{}.pid({'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n'});
+  EXPECT_EQ(message.size(), 14U);
+  EXPECT_EQ(message.pid1(), 'a');
+  EXPECT_EQ(message.pid2(), 'b');
+  EXPECT_EQ(message.pid3(), 'c');
+  EXPECT_EQ(message.pid6(), 'f');
+  EXPECT_EQ(message.pid7(), 'g');
+  EXPECT_EQ(message.pid10(), 'j');
+  EXPECT_EQ(message.pid11(), 'k');
+  EXPECT_EQ(message.pid14(), 'n');
+  EXPECT_EQ(std::uint32_t{get<0>(message)} & 0xFFFFU, 0x6162U);
+  EXPECT_EQ(std::uint32_t{get<1>(message)}, 0x63646566U);
+  EXPECT_EQ(std::uint32_t{get<2>(message)}, 0x6768696AU);
+  EXPECT_EQ(std::uint32_t{get<3>(message)}, 0x6B6C6D6EU);
+}
+TEST(UMPTypesProductInstanceId, PidFromRange) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto const message = product_instance_id_notification{}.pid(u8"midi2lib-0001"sv);
+  ASSERT_EQ(message.size(), 13U);
+  EXPECT_TRUE(std::ranges::equal(message, u8"midi2lib-0001"sv));
+}
+TEST(UMPTypesProductInstanceId, PidFromRangeTruncatesAtMaxSize) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto const message = product_instance_id_notification{}.pid(u8"abcdefghijklmnopqrstuvwxyz"sv);
+  ASSERT_EQ(message.size(), 14U);
+  EXPECT_TRUE(std::ranges::equal(message, u8"abcdefghijklmn"sv));
+}
+TEST(UMPTypesProductInstanceId, PidFromRangeWithProjection) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  constexpr std::array src{std::byte{'x'}, std::byte{'y'}};
+  auto const message = product_instance_id_notification{}.pid(
+      src, [](std::byte const b) { return static_cast<char8_t>(std::to_integer<std::uint8_t>(b)); });
+  ASSERT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], u8'x');
+  EXPECT_EQ(message[1], u8'y');
+}
+TEST(UMPTypesProductInstanceId, PidFromTransformedRange) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  constexpr std::array src{'A', 'B', 'C'};
+  auto const message =
+      product_instance_id_notification{}.pid(src | std::views::transform([](char const c) { return c + ('a' - 'A'); }));
+  ASSERT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[0], u8'a');
+  EXPECT_EQ(message[2], u8'c');
+}
+TEST(UMPTypesProductInstanceId, PidSetByIteratorSentinel) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  constexpr auto str = u8"hello"sv;
+  constexpr auto message = product_instance_id_notification{}.pid(std::begin(str), std::end(str));
+  ASSERT_EQ(message.size(), 5U);
+  EXPECT_TRUE(std::ranges::equal(message, str));
+}
+// Setting a shorter ID zeroes the bytes left over from a longer one.
+TEST(UMPTypesProductInstanceId, ShorterPidClearsTheRest) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto message =
+      product_instance_id_notification{}.pid({'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n'});
+  message.pid({'x', 'y'});
+  ASSERT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], u8'x');
+  EXPECT_EQ(message[1], u8'y');
+  for (auto index = std::size_t{2}; index < message.max_size(); ++index) {
+    EXPECT_EQ(message[index], u8'\0') << "index " << index;
+  }
+}
+// Setting the ID leaves the other fields alone.
+TEST(UMPTypesProductInstanceId, PidKeepsFormat) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto const message = product_instance_id_notification{}.format(0x1).pid({'a'});
+  EXPECT_EQ(message.format(), 0x1U);
+  EXPECT_EQ(message.pid1(), 'a');
+}
+TEST(UMPTypesProductInstanceId, IndexedPid) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto message = product_instance_id_notification{};
+  message.pid(0, u8'p').pid(13, u8'q');
+  EXPECT_EQ(message.pid(0), u8'p');
+  EXPECT_EQ(message.pid1(), 'p');
+  EXPECT_EQ(message.pid(13), u8'q');
+  EXPECT_EQ(message.pid14(), 'q');
+}
+TEST(UMPTypesProductInstanceId, SubscriptWrite) {
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto message = product_instance_id_notification{};
+  message[0] = u8'h';
+  message[1] = u8'i';
+  message[1] = message[0];
+  EXPECT_EQ(message.size(), 2U);
+  EXPECT_EQ(message.pid1(), 'h');
+  EXPECT_EQ(message.pid2(), 'h');
+  auto const& cmessage = message;
+  EXPECT_EQ(cmessage[0], u8'h');
+}
+TEST(UMPTypesProductInstanceId, IteratorWriteUsingAlgorithm) {
+  using testing::ElementsAreArray;
+  using product_instance_id_notification = midi2::ump::stream::product_instance_id_notification;
+  auto message = product_instance_id_notification{};
+  constexpr std::array src{u8'a', u8'b', u8'c', u8'd'};
+  std::ranges::copy(src, message.begin());
+  EXPECT_THAT(message, ElementsAreArray(src));
+}
+
+TEST(UMPTypesFunctionBlockName, MaxSize) {
+  EXPECT_EQ(midi2::ump::stream::function_block_name_notification{}.max_size(), 13U);
+}
+TEST(UMPTypesFunctionBlockName, DefaultIsEmpty) {
+  constexpr auto message = midi2::ump::stream::function_block_name_notification{};
+  EXPECT_TRUE(message.empty());
+  EXPECT_EQ(message.size(), 0U);
+  EXPECT_EQ(message.begin(), message.end());
+}
+TEST(UMPTypesFunctionBlockName, InitializerList) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  constexpr auto message = function_block_name_notification{}.name({'a', 'b', 'c'});
+  EXPECT_FALSE(message.empty());
+  ASSERT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[0], u8'a');
+  EXPECT_EQ(message[1], u8'b');
+  EXPECT_EQ(message[2], u8'c');
+  for (auto index = std::size_t{3}; index < message.max_size(); ++index) {
+    EXPECT_EQ(message[index], u8'\0') << "index " << index;
+  }
+}
+// The name bytes are, in order, the fields name0 to name12 which follow block_num and fill the rest of the words.
+TEST(UMPTypesFunctionBlockName, InitializerListMaxLength) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  constexpr auto message =
+      function_block_name_notification{}.name({'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm'});
+  EXPECT_EQ(message.size(), 13U);
+  EXPECT_EQ(message.name0(), 'a');
+  EXPECT_EQ(message.name1(), 'b');
+  EXPECT_EQ(message.name4(), 'e');
+  EXPECT_EQ(message.name5(), 'f');
+  EXPECT_EQ(message.name8(), 'i');
+  EXPECT_EQ(message.name9(), 'j');
+  EXPECT_EQ(message.name12(), 'm');
+  EXPECT_EQ(std::uint32_t{get<0>(message)} & 0xFFFFU, 0x0061U);
+  EXPECT_EQ(std::uint32_t{get<1>(message)}, 0x62636465U);
+  EXPECT_EQ(std::uint32_t{get<2>(message)}, 0x66676869U);
+  EXPECT_EQ(std::uint32_t{get<3>(message)}, 0x6A6B6C6DU);
+}
+TEST(UMPTypesFunctionBlockName, NameFromRange) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto const message = function_block_name_notification{}.name(u8"Demo"sv);
+  ASSERT_EQ(message.size(), 4U);
+  EXPECT_TRUE(std::ranges::equal(message, u8"Demo"sv));
+}
+TEST(UMPTypesFunctionBlockName, NameFromRangeTruncatesAtMaxSize) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto const message = function_block_name_notification{}.name(u8"abcdefghijklmnopqrstuvwxyz"sv);
+  ASSERT_EQ(message.size(), 13U);
+  EXPECT_TRUE(std::ranges::equal(message, u8"abcdefghijklm"sv));
+}
+TEST(UMPTypesFunctionBlockName, NameFromRangeWithProjection) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  constexpr std::array src{std::byte{'x'}, std::byte{'y'}};
+  auto const message = function_block_name_notification{}.name(
+      src, [](std::byte const b) { return static_cast<char8_t>(std::to_integer<std::uint8_t>(b)); });
+  ASSERT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], u8'x');
+  EXPECT_EQ(message[1], u8'y');
+}
+TEST(UMPTypesFunctionBlockName, NameFromTransformedRange) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  constexpr std::array src{'A', 'B', 'C'};
+  auto const message = function_block_name_notification{}.name(
+      src | std::views::transform([](char const c) { return c + ('a' - 'A'); }));
+  ASSERT_EQ(message.size(), 3U);
+  EXPECT_EQ(message[0], u8'a');
+  EXPECT_EQ(message[2], u8'c');
+}
+TEST(UMPTypesFunctionBlockName, NameSetByIteratorSentinel) {
+  // NOLINTNEXTLINE(google-build-using-namespace)
+  using namespace std::literals::string_view_literals;
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  constexpr auto str = u8"hello"sv;
+  constexpr auto message = function_block_name_notification{}.name(std::begin(str), std::end(str));
+  ASSERT_EQ(message.size(), 5U);
+  EXPECT_TRUE(std::ranges::equal(message, str));
+}
+// Setting a shorter name zeroes the bytes left over from a longer one.
+TEST(UMPTypesFunctionBlockName, ShorterNameClearsTheRest) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto message =
+      function_block_name_notification{}.name({'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm'});
+  message.name({'x', 'y'});
+  ASSERT_EQ(message.size(), 2U);
+  EXPECT_EQ(message[0], u8'x');
+  EXPECT_EQ(message[1], u8'y');
+  for (auto index = std::size_t{2}; index < message.max_size(); ++index) {
+    EXPECT_EQ(message[index], u8'\0') << "index " << index;
+  }
+}
+// Setting the name leaves the other fields alone.
+TEST(UMPTypesFunctionBlockName, NameKeepsOtherFields) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto const message = function_block_name_notification{}.format(0x1).block_num(0x7F).name({'a'});
+  EXPECT_EQ(message.format(), 0x1U);
+  EXPECT_EQ(message.block_num(), 0x7FU);
+  EXPECT_EQ(message.name0(), 'a');
+}
+TEST(UMPTypesFunctionBlockName, IndexedName) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto message = function_block_name_notification{};
+  message.name(0, u8'p').name(12, u8'q');
+  EXPECT_EQ(message.name(0), u8'p');
+  EXPECT_EQ(message.name0(), 'p');
+  EXPECT_EQ(message.name(12), u8'q');
+  EXPECT_EQ(message.name12(), 'q');
+}
+TEST(UMPTypesFunctionBlockName, SubscriptWrite) {
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto message = function_block_name_notification{};
+  message[0] = u8'h';
+  message[1] = u8'i';
+  message[1] = message[0];
+  EXPECT_EQ(message.size(), 2U);
+  EXPECT_EQ(message.name0(), 'h');
+  EXPECT_EQ(message.name1(), 'h');
+  auto const& cmessage = message;
+  EXPECT_EQ(cmessage[0], u8'h');
+}
+TEST(UMPTypesFunctionBlockName, IteratorWriteUsingAlgorithm) {
+  using testing::ElementsAreArray;
+  using function_block_name_notification = midi2::ump::stream::function_block_name_notification;
+  auto message = function_block_name_notification{};
+  constexpr std::array src{u8'a', u8'b', u8'c', u8'd'};
+  std::ranges::copy(src, message.begin());
+  EXPECT_THAT(message, ElementsAreArray(src));
+}
+
+TEST(UMPTypesDeviceIdentity, IndexedSwRevision) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  auto message = device_identity_notification{};
+  message.sw_revision(0, 0x01).sw_revision(1, 0x02).sw_revision(2, 0x03).sw_revision(3, 0x7F);
+  EXPECT_EQ(message.sw_revision(0), 0x01U);
+  EXPECT_EQ(message.sw_revision(3), 0x7FU);
+  EXPECT_EQ(message.sw_revision_1(), 0x01U);
+  EXPECT_EQ(message.sw_revision_2(), 0x02U);
+  EXPECT_EQ(message.sw_revision_3(), 0x03U);
+  EXPECT_EQ(message.sw_revision_4(), 0x7FU);
+  EXPECT_EQ(std::uint32_t{get<3>(message)}, 0x0102037FU);
+}
+TEST(UMPTypesDeviceIdentity, SwRevisionInitializerList) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  constexpr auto message = device_identity_notification{}.sw_revision({1, 2, 3, 4});
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAre(1, 2, 3, 4));
+}
+// Bytes which are not given a value are set to zero, even if they held a value before.
+TEST(UMPTypesDeviceIdentity, SwRevisionShortListClearsTheRest) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  auto message = device_identity_notification{}.sw_revision({1, 2, 3, 4});
+  message.sw_revision({5, 6});
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAre(5, 6, 0, 0));
+}
+TEST(UMPTypesDeviceIdentity, SwRevisionFromRange) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  constexpr std::array<std::uint8_t, 4> src{0x10, 0x20, 0x30, 0x40};
+  auto const message = device_identity_notification{}.sw_revision(src);
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAreArray(src));
+}
+// Values beyond the size of the field are ignored.
+TEST(UMPTypesDeviceIdentity, SwRevisionFromLongRange) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  std::vector<int> const src{1, 2, 3, 4, 5, 6};
+  auto const message = device_identity_notification{}.sw_revision(src);
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAre(1, 2, 3, 4));
+  EXPECT_EQ(message.dev_manuf_sysex_id(), (std::array<std::uint8_t, 3>{}));
+}
+TEST(UMPTypesDeviceIdentity, SwRevisionFromRangeWithProjection) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  constexpr std::array src{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
+  auto const message = device_identity_notification{}.sw_revision(
+      src, [](std::byte const b) { return std::to_integer<std::uint8_t>(b); });
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAre(1, 2, 3, 0));
+}
+TEST(UMPTypesDeviceIdentity, SwRevisionFromTransformedRange) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  constexpr std::array src{std::byte{0x0A}, std::byte{0x0B}};
+  auto const message = device_identity_notification{}.sw_revision(
+      src | std::views::transform([](std::byte const b) { return std::to_integer<std::uint8_t>(b); }));
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAre(0x0A, 0x0B, 0, 0));
+}
+TEST(UMPTypesDeviceIdentity, SwRevisionIteratorSentinel) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  constexpr std::array<std::uint8_t, 4> src{4, 3, 2, 1};
+  constexpr auto message = device_identity_notification{}.sw_revision(src.begin(), src.end());
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAre(4, 3, 2, 1));
+}
+TEST(UMPTypesDeviceIdentity, IndexedDevManufSysexId) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  auto message = device_identity_notification{};
+  message.dev_manuf_sysex_id(0, 0x00).dev_manuf_sysex_id(1, 0x21).dev_manuf_sysex_id(2, 0x7F);
+  EXPECT_EQ(message.dev_manuf_sysex_id(1), 0x21U);
+  EXPECT_EQ(message.dev_manuf_sysex_id_1(), 0x00U);
+  EXPECT_EQ(message.dev_manuf_sysex_id_2(), 0x21U);
+  EXPECT_EQ(message.dev_manuf_sysex_id_3(), 0x7FU);
+  EXPECT_EQ(std::uint32_t{get<1>(message)}, 0x0000217FU);
+}
+// A one-byte manufacturer ID is followed by two zero bytes (M2-104 section 7.1.3).
+TEST(UMPTypesDeviceIdentity, OneByteDevManufSysexId) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  auto message = device_identity_notification{}.dev_manuf_sysex_id({0x00, 0x21, 0x09});
+  message.dev_manuf_sysex_id({0x7D});
+  EXPECT_THAT(message.dev_manuf_sysex_id(), testing::ElementsAre(0x7D, 0, 0));
+  EXPECT_EQ(std::uint32_t{get<1>(message)}, 0x007D0000U);
+}
+TEST(UMPTypesDeviceIdentity, DevManufSysexIdFromRange) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  constexpr std::array<std::uint8_t, 3> src{0x00, 0x20, 0x29};
+  constexpr auto message = device_identity_notification{}.dev_manuf_sysex_id(src);
+  EXPECT_THAT(message.dev_manuf_sysex_id(), testing::ElementsAreArray(src));
+}
+TEST(UMPTypesDeviceIdentity, DevManufSysexIdIteratorSentinel) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  std::vector<std::uint8_t> const src{0x00, 0x20};
+  auto const message = device_identity_notification{}.dev_manuf_sysex_id(src.begin(), src.end());
+  EXPECT_THAT(message.dev_manuf_sysex_id(), testing::ElementsAre(0x00, 0x20, 0));
+}
+// Setting one array of fields leaves the rest of the message alone.
+TEST(UMPTypesDeviceIdentity, FieldsAreIndependent) {
+  using device_identity_notification = midi2::ump::stream::device_identity_notification;
+  auto const message = device_identity_notification{}
+                           .format(0x0)
+                           .device_family_lsb(0x11)
+                           .device_family_msb(0x22)
+                           .device_family_model_lsb(0x33)
+                           .device_family_model_msb(0x44)
+                           .dev_manuf_sysex_id({0x01, 0x02, 0x03})
+                           .sw_revision({0x05, 0x06, 0x07, 0x08});
+  EXPECT_THAT(message.dev_manuf_sysex_id(), testing::ElementsAre(1, 2, 3));
+  EXPECT_THAT(message.sw_revision(), testing::ElementsAre(5, 6, 7, 8));
+  EXPECT_EQ(std::uint32_t{get<1>(message)}, 0x00010203U);
+  EXPECT_EQ(std::uint32_t{get<2>(message)}, 0x11223344U);
+  EXPECT_EQ(std::uint32_t{get<3>(message)}, 0x05060708U);
 }
 
 // ump_message
