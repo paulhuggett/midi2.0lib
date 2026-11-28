@@ -67,6 +67,36 @@ TEST(UMPToMIDI1, M2NoteOn) {
   std::array const input{std::uint32_t{w0}, std::uint32_t{w1}};
   EXPECT_THAT(convert(input), ElementsAre(std::uint32_t{expected0}));
 }
+// A MIDI 1.0 Note On with velocity 0 is a Note Off. A MIDI 2.0 Note On whose velocity scales to 0 must be sent with a
+// velocity of 1 (M2-104 section D.2.1).
+// NOLINTNEXTLINE
+TEST(UMPToMIDI1, M2NoteOnLowVelocityBecomesOne) {
+  constexpr auto note = 64;
+  for (auto const velocity : {std::uint16_t{0x0000}, std::uint16_t{0x0001}, std::uint16_t{0x01FF}}) {
+    auto const [w0, w1] = midi2::ump::m2cvm::note_on{}.group(0).channel(0).note(note).velocity(velocity);
+    auto const [expected] = midi2::ump::m1cvm::note_on{}.group(0).channel(0).note(note).velocity(1);
+    std::array const input{std::uint32_t{w0}, std::uint32_t{w1}};
+    EXPECT_THAT(convert(input), ElementsAre(std::uint32_t{expected})) << "velocity=" << velocity;
+  }
+}
+// The smallest MIDI 2.0 velocity which scales to a MIDI 1.0 velocity of 1 is unchanged.
+// NOLINTNEXTLINE
+TEST(UMPToMIDI1, M2NoteOnVelocityOneUnchanged) {
+  constexpr auto note = 64;
+  auto const [w0, w1] = midi2::ump::m2cvm::note_on{}.group(0).channel(0).note(note).velocity(0x0200);
+  auto const [expected] = midi2::ump::m1cvm::note_on{}.group(0).channel(0).note(note).velocity(1);
+  std::array const input{std::uint32_t{w0}, std::uint32_t{w1}};
+  EXPECT_THAT(convert(input), ElementsAre(std::uint32_t{expected}));
+}
+// A MIDI 2.0 Note Off with a velocity of 0 keeps its velocity.
+// NOLINTNEXTLINE
+TEST(UMPToMIDI1, M2NoteOffZeroVelocity) {
+  constexpr auto note = 64;
+  auto const [w0, w1] = midi2::ump::m2cvm::note_off{}.group(0).channel(0).note(note).velocity(0);
+  auto const [expected] = midi2::ump::m1cvm::note_off{}.group(0).channel(0).note(note).velocity(0);
+  std::array const input{std::uint32_t{w0}, std::uint32_t{w1}};
+  EXPECT_THAT(convert(input), ElementsAre(std::uint32_t{expected}));
+}
 // NOLINTNEXTLINE
 TEST(UMPToMIDI1, M2NoteOff) {
   constexpr auto note = 64;

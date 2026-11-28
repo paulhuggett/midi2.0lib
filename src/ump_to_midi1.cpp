@@ -38,11 +38,13 @@ void to_midi1::to_midi1_config::m2cvm::note_off(context_type* const ctxt, ump::m
 void to_midi1::to_midi1_config::m2cvm::note_on(context_type* const ctxt, ump::m2cvm::note_on const& in) {
   constexpr auto m2v = ump::m2cvm::note_on::word1::velocity::bits();
   constexpr auto m1v = ump::m1cvm::note_on::word0::velocity::bits();
-  ctxt->push(ump::m1cvm::note_on{}
-                 .group(in.group())
-                 .channel(in.channel())
-                 .note(in.note())
-                 .velocity(mcm_scale<m2v, m1v>(in.velocity())));
+  // A MIDI 1.0 Note On with a velocity of 0 is a Note Off, so a MIDI 2.0 Note On whose velocity scales to 0 is sent
+  // with a velocity of 1 (M2-104 section D.2.1).
+  auto velocity = mcm_scale<m2v, m1v>(in.velocity());
+  if (velocity == 0U) {
+    velocity = 1U;
+  }
+  ctxt->push(ump::m1cvm::note_on{}.group(in.group()).channel(in.channel()).note(in.note()).velocity(velocity));
 }
 
 // poly pressure
