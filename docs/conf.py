@@ -9,7 +9,7 @@
 import os
 import subprocess
 
-project = 'midi2y'
+project = 'midi2'
 copyright = '2025, Paul Bowen-Huggett'
 author = 'Paul Bowen-Huggett'
 version = '0.1'

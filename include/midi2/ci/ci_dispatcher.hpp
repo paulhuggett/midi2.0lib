@@ -855,7 +855,9 @@ void ci_dispatcher<Config>::property_exchange() {
       pe.subscription_reply(c.context, header_, subscription_reply::make(chunk, request, header, data));
       break;
     case pe_notify: pe.notify(c.context, header_, notify::make(chunk, request, header, data)); break;
-    default: assert(false); break;
+    default: // LCOV_EXCL_LINE:
+      assert(false);// LCOV_EXCL_LINE:
+      break;// LCOV_EXCL_LINE:
     }
     consumer_ = &ci_dispatcher::discard;
   }
@@ -875,7 +877,9 @@ constexpr ci::property_exchange::property_exchange_type ci_dispatcher<Config>::p
   case message::pe_sub: return subscription;
   case message::pe_sub_reply: return subscription_reply;
   case message::pe_notify: return notify;
-  default: assert(false && "not a property exchange message with header and property data"); return get;
+  default:// LCOV_EXCL_LINE:
+    assert(false && "not a property exchange message with header and property data");// LCOV_EXCL_LINE:
+    return get; // LCOV_EXCL_LINE:
   }
 }
 

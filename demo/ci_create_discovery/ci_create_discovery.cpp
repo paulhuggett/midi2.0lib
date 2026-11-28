@@ -42,7 +42,10 @@ int main() {
         .output_path_id = 0_b7,
         .function_block = 0_b7,
     };
-    std::array<std::byte, buffer_size> message{};
+    // create_message() returns the end of the output range both when the message fills it exactly and when the message
+    // doesn't fit. The spare byte means that a message of up to buffer_size bytes never reaches the end of the array,
+    // so reaching it means that the message is too large.
+    std::array<std::byte, buffer_size + 1> message{};
     // NOLINTNEXTLINE(llvm-qualified-auto,readability-qualified-auto)
     auto const first = std::begin(message);
     // NOLINTNEXTLINE(llvm-qualified-auto,readability-qualified-auto)
@@ -50,8 +53,8 @@ int main() {
     // NOLINTNEXTLINE(llvm-qualified-auto,readability-qualified-auto)
     auto const pos = midi2::ci::create_message(first, last, header, discovery);
     if (pos == last) {
-      std::cerr << "Buffer too small\n";
-      return EXIT_FAILURE;
+      std::cerr << "The message is larger than " << buffer_size << " bytes\n"; // LCOV_EXCL_LINE
+      return EXIT_FAILURE; // LCOV_EXCL_LINE
     }
     for (auto const b : std::ranges::subrange(first, pos)) {
       std::cout << std::format("{:02X} ", std::to_underlying(b));

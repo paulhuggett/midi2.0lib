@@ -12,8 +12,11 @@
 /// \brief UMP array type helpers
 ///
 /// Some of the UMP types can be treated as containing arrays: specifically the four data64::sysex7 messages, the four
-/// data128::sysex8 messages, and the flex_data::text_common message. The file contains helper types which those
-/// message classes use to implement this behaviour.
+/// data128::sysex8 messages, the flex_data::text_common message, and the stream::endpoint_name_notification,
+/// stream::product_instance_id_notification and stream::function_block_name_notification messages. The file contains
+/// helper types which those message classes use to implement this behaviour. It also contains set_fields(), which
+/// sets one of the arrays of fields in a message that holds more than one, such as
+/// stream::device_identity_notification.
 
 #ifndef MIDI2_UMP_AS_ARRAY_HPP
 #define MIDI2_UMP_AS_ARRAY_HPP
@@ -35,23 +38,47 @@
 
 namespace midi2::ump::details {
 
+/// \brief Reads and writes the elements of a message that is accessible as an array.
+///
+/// By default, an element is read by the message's data(index) member function and set by data(index, value). A
+/// message whose elements are reached by other member functions specializes this template.
+///
+/// \tparam T  The message type, without const qualification.
+template <typename T> struct element_access {
+  /// \brief Returns an element of a message.
+  /// \param message  The message containing the element.
+  /// \param index  The index of the element.
+  /// \returns The element at \p index.
+  static constexpr decltype(auto) get(T const& message, std::size_t const index) noexcept {
+    return message.data(index);
+  }
+  /// \brief Sets an element of a message.
+  /// \param message  The message containing the element.
+  /// \param index  The index of the element.
+  /// \param v  The new value of the element.
+  static constexpr void set(T& message, std::size_t const index, typename T::value_type const v) noexcept {
+    message.data(index, v);
+  }
+};
+
 /// \brief Satisfied by types whose elements can be read (and, unless the type is const, written) by index.
 ///
-/// The type must provide a value_type member type and a data(index) member function which returns the element at
-/// index. A non-const type must also provide data(index, value) which sets that element.
+/// The type T must provide a value_type member type. element_access<> must be able to return the element at an index
+/// and, if T is not const, to set it. By default, this uses T's data(index) and data(index, value) member functions.
 template <typename T>
 concept accessible_as_array = requires(T const ct, std::size_t i) {
   typename T::value_type;
-  { ct.data(i) } -> std::convertible_to<typename T::value_type>;
+  { element_access<std::remove_const_t<T>>::get(ct, i) } -> std::convertible_to<typename T::value_type>;
 } && (std::is_const_v<T> || requires(T t, std::size_t i, typename T::value_type v) {
-                                { t.data(i, v) };
+                                { element_access<T>::set(t, i, v) };
                               });
 
 /// \brief A proxy for an element of a message that is accessible as an array.
 ///
-/// Reading the proxy (by conversion to value_type) calls the owner's data(index) member function; assigning to it calls
-/// data(index, value). Like std::vector<bool>::reference, assignment writes through to the referenced element: it never
-/// changes the element to which the proxy refers, even when the right-hand side is another proxy.
+/// Reading the proxy (by conversion to value_type) gets the owner's element with element_access<>; assigning to it sets
+/// the element. By default, these call the owner's data(index) and data(index, value) member functions. Like
+/// std::vector<bool>::reference, assignment writes through to the referenced element: it never changes the element to
+/// which the proxy refers, even when the right-hand side is another proxy.
 ///
 /// \tparam T  The message type, possibly const-qualified.
 template <accessible_as_array T> class array_subscript_proxy {
@@ -100,7 +127,7 @@ public:
   constexpr array_subscript_proxy const& operator=(value_type const v) const noexcept
     requires(!std::is_const_v<T>)
   {
-    owner_->data(index_, v);
+    element_access<T>::set(*owner_, index_, v);
     return *this;
   }
   /// \brief Sets the value of the referenced element to the value of the element referenced by \p other.
@@ -112,7 +139,7 @@ public:
     if (this == &other) {
       return *this;
     }
-    owner_->data(index_, static_cast<value_type>(other));
+    element_access<T>::set(*owner_, index_, static_cast<value_type>(other));
     return *this;
   }
   /// \brief Returns the value of the referenced element.
@@ -125,7 +152,9 @@ public:
   /// This is equivalent to the conversion to value_type, for use where an implicit conversion is not applied.
   ///
   /// \returns The value of the referenced element.
-  [[nodiscard]] constexpr value_type get() const noexcept { return owner_->data(index_); }
+  [[nodiscard]] constexpr value_type get() const noexcept {
+    return element_access<std::remove_const_t<T>>::get(*owner_, index_);
+  }
 
   /// \brief Moves the proxy to refer to the next element.
   /// \returns *this
@@ -447,6 +476,36 @@ template <typename Message, unsigned Bits> struct data_helper {
     return index;
   }
 };
+
+/// \brief Sets a fixed number of consecutive fields of a message from an iterator range. The fields that are not
+///   given a value are set to zero.
+///
+/// This is for messages which hold more than one array of fields, and so cannot use data_helper<>.
+///
+/// \tparam Bits  The number of bits in each field.
+/// \tparam Size  The number of fields.
+/// \tparam I  An input iterator type whose elements are integral once \p Proj has been applied.
+/// \tparam S  A sentinel type for \p I.
+/// \tparam Proj  The type of the projection.
+/// \tparam Setter  A function which takes the index of a field and its new value, and sets that field.
+/// \param first  The beginning of the range of values to be stored.
+/// \param last  The end of the range of values to be stored. Values beyond the first \p Size are ignored.
+/// \param proj  The projection to apply to each value.
+/// \param setter  Sets one field.
+template <unsigned Bits, std::size_t Size, std::input_iterator I, std::sentinel_for<I> S, typename Proj,
+          std::invocable<std::size_t, ::midi2::adt::uinteger_t<Bits>> Setter>
+  requires std::is_integral_v<std::remove_cvref_t<std::indirect_result_t<Proj&, I>>>
+constexpr void set_fields(I first, S const last, Proj proj, Setter setter) {
+  auto index = std::size_t{0};
+  for (; index < Size && first != last; ++index, ++first) {
+    auto const v = std::invoke(proj, *first);
+    assert(v >= 0 && v < (1 << Bits) && "data value is out of range");
+    setter(index, static_cast<::midi2::adt::uinteger_t<Bits>>(v));
+  }
+  for (; index < Size; ++index) {
+    setter(index, ::midi2::adt::uinteger_t<Bits>{0});
+  }
+}
 
 }  // namespace midi2::ump::details
 
