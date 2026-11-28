@@ -34,6 +34,14 @@ void ump_to_midi2::to_midi2_config::m1cvm::note_off(ump_to_midi2::context* const
 void ump_to_midi2::to_midi2_config::m1cvm::note_on(ump_to_midi2::context* const ctxt, ump::m1cvm::note_on const& in) {
   constexpr auto m1bits = ump::m1cvm::note_on::word0::velocity::bits();
   constexpr auto m2bits = ump::m2cvm::note_on::word1::velocity::bits();
+  if (in.velocity() == 0U) {
+    // A MIDI 1.0 Note On with a velocity of 0 is a Note Off. M2-104 section D.3.1 requires that it is translated to a
+    // MIDI 2.0 Note Off with a velocity of 0x8000.
+    constexpr auto note_off_velocity = std::uint16_t{0x8000};
+    ctxt->push(
+        ump::m2cvm::note_off{}.group(in.group()).channel(in.channel()).note(in.note()).velocity(note_off_velocity));
+    return;
+  }
   ctxt->push(ump::m2cvm::note_on{}
                  .group(in.group())
                  .channel(in.channel())

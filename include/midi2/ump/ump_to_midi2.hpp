@@ -307,6 +307,10 @@ private:
       static void note_off(context* ctxt, ump::m1cvm::note_off const& in);
       /// \brief Translates a MIDI 1.0 Note On message (M2-104 section 7.3.2) to its MIDI 2.0 equivalent and pushes the
       /// result to the output.
+      ///
+      /// A Note On with a velocity of 0 is a Note Off, so it is translated to a MIDI 2.0 Note Off with a velocity of
+      /// 0x8000 (M2-104 section D.3.1).
+      ///
       /// \param ctxt  The translator context.
       /// \param in  The incoming message.
       static void note_on(context* ctxt, ump::m1cvm::note_on const& in);
