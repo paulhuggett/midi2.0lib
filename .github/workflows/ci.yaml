@@ -145,6 +145,7 @@ jobs:
                 -G "${{ matrix.generator }}"                 \
                 -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
                 -D MIDI2_DEMO:BOOL=Yes                       \
+                -D MIDI2_DOC_EXAMPLES:BOOL=Yes               \
                 -D MIDI2_WERROR:BOOL=Yes                     \
                 ${{ matrix.cxx_compiler }}                   \
                 ${{ matrix.options }}

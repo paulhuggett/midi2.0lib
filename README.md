@@ -54,7 +54,12 @@ target_link_libraries(my_program PRIVATE midi2)
 
 CMake fetches the library's one dependency, [icubaby](https://github.com/paulhuggett/icubaby), automatically. The
 library's unit tests are built by default; set the `MIDI2_UNITTEST` option to `No` before `FetchContent_MakeAvailable()`
-to skip them. The `MIDI2_DEMO` option builds the demo programs.
+to skip them. The `MIDI2_DEMO` option builds the demo programs, and `MIDI2_DOC_EXAMPLES` builds (and tests) the
+example programs used by the documentation.
+
+The [docs](docs) directory holds the library's user documentation: an introduction, a tutorial, how-to guides, and a
+reference for each of its parts. To build it, run Doxygen to generate XML in `docs/xml`, then run Sphinx (see
+[docs/requirements.txt](docs/requirements.txt)). On Read the Docs, [docs/conf.py](docs/conf.py) runs Doxygen itself.
 
 ## Examples
 
