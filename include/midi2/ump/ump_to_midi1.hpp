@@ -43,6 +43,16 @@ public:
   /// \brief The type of an output MIDI 1.0 message.
   using output_type = std::uint32_t;
 
+  /// \brief Constructs a translator.
+  constexpr to_midi1() = default;
+  // The translator cannot be copied or moved.
+  to_midi1(to_midi1 const&) = delete;
+  to_midi1(to_midi1&&) noexcept = delete;
+  /// \brief Destroys the translator.
+  ~to_midi1() noexcept = default;
+  to_midi1& operator=(to_midi1 const&) = delete;
+  to_midi1& operator=(to_midi1&&) noexcept = delete;
+
   /// \brief Checks if the output is empty
   /// \return True if the output FIFO is empty, false otherwise.
   [[nodiscard]] constexpr bool empty() const noexcept { return context_.output.empty(); }

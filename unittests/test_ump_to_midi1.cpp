@@ -17,6 +17,7 @@
 #include <any>
 #include <array>
 #include <ranges>
+#include <type_traits>
 #include <vector>
 
 // Google Test/Mock
@@ -443,5 +444,11 @@ TEST(UMPToMIDI1, SystemMessagePassThrough) {
   }
   EXPECT_THAT(input, ContainerEq(output));
 }
+
+// The translator holds a cache which cannot be copied, so the translator itself can be neither copied nor moved.
+static_assert(!std::is_copy_constructible_v<midi2::ump::to_midi1>);
+static_assert(!std::is_move_constructible_v<midi2::ump::to_midi1>);
+static_assert(!std::is_copy_assignable_v<midi2::ump::to_midi1>);
+static_assert(!std::is_move_assignable_v<midi2::ump::to_midi1>);
 
 }  // end anonymous namespace
