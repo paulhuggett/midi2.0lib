@@ -99,14 +99,35 @@ TEST(UMPToMidi2, NoteOnImplicitNoteOff) {
     expected.push_back(std::uint32_t{get<1>(expected_non)});
   }
   {
+    // M2-104 section D.3.1: a MIDI 1.0 Note On with velocity 0 becomes a MIDI 2.0 Note Off with velocity 0x8000.
     constexpr auto expected_noff =
-        midi2::ump::m2cvm::note_on{}.group(group).channel(channel).note(note_number).velocity(0);
+        midi2::ump::m2cvm::note_off{}.group(group).channel(channel).note(note_number).velocity(0x8000);
     expected.push_back(std::uint32_t{get<0>(expected_noff)});
     expected.push_back(std::uint32_t{get<1>(expected_noff)});
   }
 
   auto const actual = convert(input);
   EXPECT_THAT(actual, ElementsAreArray(expected));
+}
+
+// A MIDI 1.0 Note On with velocity 0 on its own (with no preceding Note On) is also translated to a Note Off.
+// NOLINTNEXTLINE
+TEST(UMPToMidi2, NoteOnZeroVelocityIsNoteOff) {
+  constexpr auto note = 64U;
+  constexpr auto in = midi2::ump::m1cvm::note_on{}.group(2).channel(7).note(note).velocity(0);
+  constexpr auto expected =
+      midi2::ump::m2cvm::note_off{}.group(2).channel(7).note(note).attribute_type(0).velocity(0x8000).attribute(0);
+  std::array const input{std::uint32_t{get<0>(in)}};
+  EXPECT_THAT(convert(input), ElementsAre(std::uint32_t{get<0>(expected)}, std::uint32_t{get<1>(expected)}));
+}
+// The lowest non-zero MIDI 1.0 velocity remains a Note On.
+// NOLINTNEXTLINE
+TEST(UMPToMidi2, NoteOnVelocityOne) {
+  constexpr auto note = 64U;
+  constexpr auto in = midi2::ump::m1cvm::note_on{}.group(0).channel(0).note(note).velocity(1);
+  constexpr auto expected = midi2::ump::m2cvm::note_on{}.group(0).channel(0).note(note).velocity(0x0200);
+  std::array const input{std::uint32_t{get<0>(in)}};
+  EXPECT_THAT(convert(input), ElementsAre(std::uint32_t{get<0>(expected)}, std::uint32_t{get<1>(expected)}));
 }
 
 // NOLINTNEXTLINE
