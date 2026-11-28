@@ -432,6 +432,29 @@ constexpr bool check(T const& message) {
   }
 }
 
+/// \brief The maximum number of elements held by a UMP message type which is accessible as an array, such as the
+///   data bytes of a sysex7 message or the characters of an endpoint name notification.
+///
+/// For such a type, this provides a member constant `value` equal to the value returned by the type's max_size()
+/// member function. For any other type, including UMP message types which don't have a max_size() member function,
+/// there is no `value` member. The template can be used with const- and volatile-qualified types.
+///
+/// This is not the same as std::tuple_size, which gives the number of 32-bit words in a UMP message.
+///
+/// \tparam T  The type whose maximum number of elements is to be provided.
+template <typename T> struct max_size {};
+
+/// \brief The maximum number of elements held by a UMP message type which is accessible as an array.
+/// \tparam T  A UMP message type, possibly const- or volatile-qualified, with a constexpr max_size() member function.
+template <typename T>
+  requires ump_message<std::remove_cv_t<T>> &&
+           requires { std::integral_constant<std::size_t, std::remove_cv_t<T>{}.max_size()>{}; }
+struct max_size<T> : std::integral_constant<std::size_t, std::remove_cv_t<T>{}.max_size()> {};
+
+/// \brief The maximum number of elements held by a UMP message type which is accessible as an array. Equal to
+///   max_size<T>::value.
+template <typename T> inline constexpr std::size_t max_size_v = max_size<T>::value;
+
 }  // end namespace midi2::ump
 
 /// Creates a "getter" member function for a field of one of the words of a UMP message class. The function has

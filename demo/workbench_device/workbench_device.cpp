@@ -59,6 +59,7 @@
 #include <exception>
 #include <expected>
 #include <format>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <random>
@@ -364,8 +365,21 @@ private:
   void endpoint_discovery(midi2::ump::stream::endpoint_discovery const& message) const;
   void stream_configuration_request(midi2::ump::stream::jr_configuration_request const& message) const;
   void function_block_discovery(midi2::ump::stream::function_block_discovery const& message) const;
-  void send_endpoint_name() const;
-  void send_product_instance_id() const;
+  /// Sends a text string as a sequence of UMP Stream messages, each of which carries a piece of the text.
+  /// \tparam Message  The type of the UMP Stream messages: one which is accessible as an array of text bytes.
+  /// \tparam SetText  A function which stores a piece of the text in a message.
+  /// \param text  The text to be sent.
+  /// \param set_text  The function called to store each piece of the text in its message.
+  template <midi2::ump::ump_message Message,
+            std::invocable<Message&, text_chunk<midi2::ump::max_size_v<Message>> const&> SetText>
+  void send_text(std::string_view const text, SetText set_text) const {
+    constexpr auto max_size = midi2::ump::max_size_v<Message>;
+    for_each_text_chunk<max_size>(text, [this, &set_text](stream_format const format, text_chunk<max_size> const& c) {
+      auto message = Message{}.format(std::to_underlying(format));
+      std::invoke(set_text, message, c);
+      this->send(message);
+    });
+  }
   void send_stream_configuration() const;
   void send_function_block_info() const;
   void send_function_block_name() const;
@@ -548,26 +562,16 @@ void device::endpoint_discovery(midi2::ump::stream::endpoint_discovery const& me
                    .sw_revision(software_revision));
   }
   if (message.filter_requests(endpoint_name)) {
-    this->send_endpoint_name();
+    this->send_text<midi2::ump::stream::endpoint_name_notification>(endpoint_name_,
+                                                                    [](auto& m, auto const& chunk) { m.name(chunk); });
   }
   if (message.filter_requests(product_instance)) {
-    this->send_product_instance_id();
+    this->send_text<midi2::ump::stream::product_instance_id_notification>(
+        product_instance_id, [](auto& m, auto const& chunk) { m.pid(chunk); });
   }
   if (message.filter_requests(stream_configuration)) {
     this->send_stream_configuration();
   }
-}
-
-void device::send_endpoint_name() const {
-  for_each_text_chunk<14>(endpoint_name_, [this](stream_format const format, text_chunk<14> const& c) {
-    this->send(midi2::ump::stream::endpoint_name_notification{}.format(std::to_underlying(format)).name(c));
-  });
-}
-
-void device::send_product_instance_id() const {
-  for_each_text_chunk<14>(product_instance_id, [this](stream_format const format, text_chunk<14> const& c) {
-    this->send(midi2::ump::stream::product_instance_id_notification{}.format(std::to_underlying(format)).pid(c));
-  });
 }
 
 void device::send_stream_configuration() const {
@@ -617,7 +621,8 @@ void device::send_function_block_info() const {
 }
 
 void device::send_function_block_name() const {
-  for_each_text_chunk<13>(function_block_name, [this](stream_format const format, text_chunk<13> const& c) {
+  constexpr auto max_size = midi2::ump::max_size_v<midi2::ump::stream::function_block_name_notification>;
+  for_each_text_chunk<max_size>(function_block_name, [this](stream_format const format, text_chunk<max_size> const& c) {
     this->send(midi2::ump::stream::function_block_name_notification{}
                    .format(std::to_underlying(format))
                    .block_num(function_block_number)

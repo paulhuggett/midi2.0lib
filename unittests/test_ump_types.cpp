@@ -71,6 +71,49 @@ TYPED_TEST(UMPCheckFixture, Check) {
   ASSERT_TRUE(midi2::ump::check(this->value_));
 }
 
+template <typename T>
+concept has_max_size = requires { midi2::ump::max_size<T>::value; };
+
+TEST(UMPTypesMaxSize, MessagesAccessibleAsArrays) {
+  using namespace midi2::ump;  // NOLINT(google-build-using-namespace)
+  EXPECT_EQ(max_size_v<data64::sysex7_in_1>, data64::sysex7_in_1{}.max_size());
+  EXPECT_EQ(max_size_v<data64::sysex7_start>, 6U);
+  EXPECT_EQ(max_size_v<data64::sysex7_continue>, 6U);
+  EXPECT_EQ(max_size_v<data64::sysex7_end>, 6U);
+  EXPECT_EQ(max_size_v<stream::endpoint_name_notification>, stream::endpoint_name_notification{}.max_size());
+  EXPECT_EQ(max_size_v<stream::product_instance_id_notification>,
+            stream::product_instance_id_notification{}.max_size());
+  EXPECT_EQ(max_size_v<stream::function_block_name_notification>,
+            stream::function_block_name_notification{}.max_size());
+  EXPECT_EQ(max_size_v<flex_data::text_common>, flex_data::text_common{}.max_size());
+  EXPECT_EQ(max_size_v<data128::sysex8_in_1>, data128::sysex8_in_1{}.max_size());
+  EXPECT_EQ(max_size_v<data128::sysex8_start>, 13U);
+  EXPECT_EQ(max_size_v<data128::sysex8_continue>, 13U);
+  EXPECT_EQ(max_size_v<data128::sysex8_end>, 13U);
+}
+TEST(UMPTypesMaxSize, IsNotTheNumberOfWords) {
+  using namespace midi2::ump;  // NOLINT(google-build-using-namespace)
+  EXPECT_EQ(max_size_v<stream::endpoint_name_notification>, 14U);
+  EXPECT_EQ(std::tuple_size_v<stream::endpoint_name_notification>, 4U);
+}
+TEST(UMPTypesMaxSize, CvQualifiedTypes) {
+  using namespace midi2::ump;  // NOLINT(google-build-using-namespace)
+  EXPECT_EQ(max_size_v<data64::sysex7_in_1 const>, 6U);
+  EXPECT_EQ(max_size_v<data64::sysex7_in_1 volatile>, 6U);
+  EXPECT_EQ(max_size_v<stream::function_block_name_notification const volatile>, 13U);
+}
+TEST(UMPTypesMaxSize, TypesWithoutMaxSize) {
+  using namespace midi2::ump;  // NOLINT(google-build-using-namespace)
+  EXPECT_TRUE(has_max_size<data64::sysex7_in_1>);
+  EXPECT_FALSE(has_max_size<m2cvm::note_on>);
+  EXPECT_FALSE(has_max_size<stream::endpoint_discovery>);
+  EXPECT_FALSE(has_max_size<data128::mds_payload>);
+  // Types which have a max_size() member function but are not UMP messages.
+  EXPECT_FALSE((has_max_size<std::array<int, 4>>));
+  EXPECT_FALSE(has_max_size<std::vector<int>>);
+  EXPECT_FALSE(has_max_size<int>);
+}
+
 // M2-104-UM Figure 64: word 1 is r (bit 31), program (bits 30-24), reserved (23-16), r (15), bank msb (14-8),
 // r (7), bank lsb (6-0).
 TEST(UMPTypesM2CVMProgramChange, ProgramFieldLayout) {
