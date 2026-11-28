@@ -444,12 +444,30 @@ constexpr bool check(T const& message) {
 /// \tparam T  The type whose maximum number of elements is to be provided.
 template <typename T> struct max_size {};
 
+namespace details {
+
+/// \brief An integral constant holding the value returned by T's max_size() member function.
+///
+/// The function is called through the member pointer &T::max_size so that the name is looked up only in T. A call
+/// written as T{}.max_size() fails with MSVC when T is a specialization of a class template, such as the sysex7 and
+/// sysex8 messages, apparently because MSVC also finds the midi2::ump::max_size class template.
+///
+/// \tparam T  A type with a constexpr max_size() member function which can be default-constructed in a constant
+///   expression.
+template <typename T>
+using max_size_constant = std::integral_constant<std::size_t, std::invoke(&T::max_size, T{})>;
+
+/// \brief Satisfied if T has a max_size() member function which can be called in a constant expression.
+template <typename T>
+concept constexpr_max_size = requires { typename max_size_constant<T>; };
+
+}  // end namespace details
+
 /// \brief The maximum number of elements held by a UMP message type which is accessible as an array.
 /// \tparam T  A UMP message type, possibly const- or volatile-qualified, with a constexpr max_size() member function.
 template <typename T>
-  requires ump_message<std::remove_cv_t<T>> &&
-           requires { std::integral_constant<std::size_t, std::remove_cv_t<T>{}.max_size()>{}; }
-struct max_size<T> : std::integral_constant<std::size_t, std::remove_cv_t<T>{}.max_size()> {};
+  requires ump_message<std::remove_cv_t<T>> && details::constexpr_max_size<std::remove_cv_t<T>>
+struct max_size<T> : details::max_size_constant<std::remove_cv_t<T>> {};
 
 /// \brief The maximum number of elements held by a UMP message type which is accessible as an array. Equal to
 ///   max_size<T>::value.
