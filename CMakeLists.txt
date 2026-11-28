@@ -103,10 +103,20 @@ target_include_directories(midi2 PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-set(MIDI2_EXPORT_NAME midi2-config)
-install(TARGETS midi2 EXPORT ${MIDI2_EXPORT_NAME})
-install(EXPORT ${MIDI2_EXPORT_NAME} NAMESPACE midi2:: DESTINATION "share/${PROJECT_NAME}")
-install(DIRECTORY ${INCLUDE_DIR} DESTINATION include)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+set(MIDI2_CONFIG_DESTINATION "share/${PROJECT_NAME}")
+install(TARGETS midi2 EXPORT midi2-targets)
+install(EXPORT midi2-targets NAMESPACE midi2:: DESTINATION "${MIDI2_CONFIG_DESTINATION}")
+# The trailing slash installs the contents of the include directory rather than the directory itself.
+install(DIRECTORY "${INCLUDE_DIR}/" DESTINATION include)
+# The package configuration file finds icubaby before it imports the midi2 targets.
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/midi2-config.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/midi2-config.cmake"
+  INSTALL_DESTINATION "${MIDI2_CONFIG_DESTINATION}"
+)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/midi2-config.cmake" DESTINATION "${MIDI2_CONFIG_DESTINATION}")
 
 
 if(MIDI2_UNITTEST OR MIDI2_FUZZTEST OR MIDI2_DEMO)
