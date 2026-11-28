@@ -21,6 +21,7 @@ option(MIDI2_SANITIZE  "Enable sanitizers"         No )
 option(MIDI2_FUZZTEST  "Enable Fuzz Testing"       No )
 option(MIDI2_UNITTEST  "Enable Unit Testing"       Yes)
 option(MIDI2_DEMO      "Enable the demo programs"  No )
+option(MIDI2_DOC_EXAMPLES "Build (and test) the documentation's example programs" No)
 option(MIDI2_BENCHMARK "Enable the benchmark"      No )
 option(MIDI2_TEXT_COMMON_STRING "Enable std::string in the UMP text_common message class" No)
 
@@ -109,9 +110,13 @@ install(EXPORT ${MIDI2_EXPORT_NAME} NAMESPACE midi2:: DESTINATION "share/${PROJE
 install(DIRECTORY ${INCLUDE_DIR} DESTINATION include)
 
 
-if(MIDI2_UNITTEST OR MIDI2_FUZZTEST OR MIDI2_DEMO)
+if(MIDI2_UNITTEST OR MIDI2_FUZZTEST OR MIDI2_DEMO OR MIDI2_DOC_EXAMPLES)
   enable_testing()
 endif()
+
+if(MIDI2_DOC_EXAMPLES)
+  add_subdirectory(docs/examples)
+endif(MIDI2_DOC_EXAMPLES)
 
 if(MIDI2_DEMO)
   # The demo programs use the peejay JSON parser. We don't want its unit or system tests.
