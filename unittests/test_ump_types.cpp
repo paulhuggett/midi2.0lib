@@ -784,7 +784,7 @@ TEST(UMPTypesEndpointName, Iterators) {
   EXPECT_EQ(std::distance(message.cbegin(), message.cend()), 3);
   EXPECT_THAT(std::ranges::subrange(message.cbegin(), message.cend()), ElementsAre(u8'a', u8'b', u8'c'));
   EXPECT_EQ(std::distance(message.begin(), message.end()), 3);
-  std::ranges::fill(message.begin(), message.end(), u8'x');
+  std::ranges::fill(message, u8'x');
   EXPECT_THAT(message, ElementsAre(u8'x', u8'x', u8'x'));
 }
 // Setting a shorter name zeroes the bytes left over from a longer one.
@@ -928,7 +928,7 @@ TEST(UMPTypesProductInstanceId, Iterators) {
   EXPECT_EQ(std::distance(message.cbegin(), message.cend()), 3);
   EXPECT_THAT(std::ranges::subrange(message.cbegin(), message.cend()), ElementsAre(u8'a', u8'b', u8'c'));
   EXPECT_EQ(std::distance(message.begin(), message.end()), 3);
-  std::ranges::fill(message.begin(), message.end(), u8'x');
+  std::ranges::fill(message, u8'x');
   EXPECT_THAT(message, ElementsAre(u8'x', u8'x', u8'x'));
 }
 // Setting a shorter ID zeroes the bytes left over from a longer one.
@@ -1071,7 +1071,7 @@ TEST(UMPTypesFunctionBlockName, Iterators) {
   EXPECT_EQ(std::distance(message.cbegin(), message.cend()), 3);
   EXPECT_THAT(std::ranges::subrange(message.cbegin(), message.cend()), ElementsAre(u8'a', u8'b', u8'c'));
   EXPECT_EQ(std::distance(message.begin(), message.end()), 3);
-  std::ranges::fill(message.begin(), message.end(), u8'x');
+  std::ranges::fill(message, u8'x');
   EXPECT_THAT(message, ElementsAre(u8'x', u8'x', u8'x'));
 }
 // Setting a shorter name zeroes the bytes left over from a longer one.
