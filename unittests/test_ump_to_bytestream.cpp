@@ -15,6 +15,8 @@
 #include <array>
 #include <cstdint>
 #include <ranges>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 // Google test
@@ -415,6 +417,73 @@ TEST(UMPToBytestream, RealTimeKeepsRunningStatus) {
             midi2::ump::m1cvm::note_on{}.channel(channel).note(62).velocity(101));
   EXPECT_THAT(convert(input), ElementsAre(midi2::to_byte(note_on) | std::byte{channel}, std::byte{60}, std::byte{100},
                                           midi2::to_byte(timing_clock), std::byte{62}, std::byte{101}));
+}
+
+/// Pops all of the bytes that are waiting in a translator's output.
+std::vector<std::byte> drain(midi2::bytestream::to_bytestream& t) {
+  std::vector<std::byte> output;
+  while (!t.empty()) {
+    output.push_back(t.pop());
+  }
+  return output;
+}
+/// Pushes each of the given words to a translator.
+void push_all(midi2::bytestream::to_bytestream& t, std::vector<std::uint32_t> const& input) {
+  for (auto const w : input) {
+    t.push(w);
+  }
+}
+
+static_assert(std::is_copy_constructible_v<midi2::bytestream::to_bytestream>);
+static_assert(std::is_nothrow_move_constructible_v<midi2::bytestream::to_bytestream>);
+static_assert(!std::is_copy_assignable_v<midi2::bytestream::to_bytestream>);
+static_assert(!std::is_move_assignable_v<midi2::bytestream::to_bytestream>);
+
+// A copy of a translator has its own output and state. Messages pushed to the copy must not appear in the output of the
+// original (or vice versa).
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, CopyConstructHasIndependentOutput) {
+  constexpr auto channel = 3U;
+  constexpr auto status = midi2::to_byte(note_on) | std::byte{channel};
+  midi2::bytestream::to_bytestream original;
+  push_all(original, words(midi2::ump::m1cvm::note_on{}.channel(channel).note(60).velocity(100)));
+
+  midi2::bytestream::to_bytestream copy{original};  // NOLINT(performance-unnecessary-copy-initialization)
+  EXPECT_FALSE(copy.empty());
+  EXPECT_THAT(drain(copy), ElementsAre(status, std::byte{60}, std::byte{100}));
+  EXPECT_THAT(drain(original), ElementsAre(status, std::byte{60}, std::byte{100}));
+
+  // The copy has the original's running status.
+  push_all(copy, words(midi2::ump::m1cvm::note_on{}.channel(channel).note(62).velocity(101)));
+  EXPECT_TRUE(original.empty());
+  EXPECT_THAT(drain(copy), ElementsAre(std::byte{62}, std::byte{101}));
+
+  push_all(original, words(midi2::ump::system::tune_request{}));
+  EXPECT_TRUE(copy.empty());
+  EXPECT_THAT(drain(original), ElementsAre(midi2::to_byte(tune_request)));
+}
+// A copy made part way through a multi-word message completes that message independently of the original.
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, CopyConstructMidMessage) {
+  auto const input = words(midi2::ump::data64::sysex7_in_1{}.number_of_bytes(2).data0(0x7D).data1(0x01));
+  ASSERT_EQ(input.size(), 2U);
+  midi2::bytestream::to_bytestream original;
+  original.push(input[0]);
+  midi2::bytestream::to_bytestream copy{original};  // NOLINT(performance-unnecessary-copy-initialization)
+  copy.push(input[1]);
+  EXPECT_TRUE(original.empty());
+  EXPECT_THAT(drain(copy), ElementsAre(std::byte{0xF0}, std::byte{0x7D}, std::byte{0x01}, std::byte{0xF7}));
+  original.push(input[1]);
+  EXPECT_THAT(drain(original), ElementsAre(std::byte{0xF0}, std::byte{0x7D}, std::byte{0x01}, std::byte{0xF7}));
+}
+// NOLINTNEXTLINE
+TEST(UMPToBytestream, MoveConstruct) {
+  midi2::bytestream::to_bytestream original;
+  push_all(original, words(midi2::ump::system::tune_request{}));
+  midi2::bytestream::to_bytestream moved{std::move(original)};
+  EXPECT_THAT(drain(moved), ElementsAre(midi2::to_byte(tune_request)));
+  push_all(moved, words(midi2::ump::system::tune_request{}));
+  EXPECT_THAT(drain(moved), ElementsAre(midi2::to_byte(tune_request)));
 }
 
 }  // end anonymous namespace

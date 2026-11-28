@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <optional>
 #include <type_traits>
+#include <utility>
 
 #include "midi2/adt/fifo.hpp"
 #include "midi2/bytestream/bytestream_types.hpp"
@@ -83,6 +84,24 @@ public:
 
   /// \brief Constructs a translator which passes messages from all groups.
   constexpr to_bytestream() = default;
+  /// \brief Constructs a translator with the same state as \p other.
+  /// \param other  The translator to be copied.
+  constexpr to_bytestream(to_bytestream const& other) : context_{other.context_}, dispatcher_{other.dispatcher_} {
+    this->attach_context();
+  }
+  /// \brief Constructs a translator by moving the state of \p other.
+  /// \param other  The translator whose state is to be moved.
+  constexpr to_bytestream(to_bytestream&& other) noexcept
+      : context_{std::move(other.context_)}, dispatcher_{std::move(other.dispatcher_)} {
+    this->attach_context();
+  }
+  /// \brief Destroys the translator.
+  constexpr ~to_bytestream() noexcept = default;
+
+  /// Translators cannot be assigned.
+  to_bytestream& operator=(to_bytestream const&) = delete;
+  /// Translators cannot be assigned.
+  to_bytestream& operator=(to_bytestream&&) noexcept = delete;
 
   /// \brief Checks if the output has no elements
   /// \returns True if there are no bytes waiting to be popped; false otherwise.
@@ -420,6 +439,13 @@ private:
     [[no_unique_address]] ump::dispatcher_backend::stream_null<decltype(context)> stream{};
     [[no_unique_address]] ump::dispatcher_backend::flex_data_null<decltype(context)> flex{};
   };
+
+  /// \brief Points the dispatcher's configuration at this translator's context.
+  ///
+  /// The dispatcher's configuration holds a pointer to context_. A copied or moved dispatcher still points at the
+  /// context of the translator from which it came, so it must be re-attached to this one.
+  constexpr void attach_context() noexcept { dispatcher_.config().context = &context_; }
+
   context_type context_;
   ump::ump_dispatcher<to_bytestream_config> dispatcher_{to_bytestream_config{.context = &context_}};
 };

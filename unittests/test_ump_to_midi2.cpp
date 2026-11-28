@@ -15,6 +15,7 @@
 // Standard Library
 #include <array>
 #include <ranges>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -622,6 +623,56 @@ FUZZ_TEST(UMPToMidi2Fuzz, NeverCrashes);
 #endif
 TEST(UMPToMidi2Fuzz, Empty) {
   NeverCrashes(0, {});
+}
+
+/// Pops all of the words that are waiting in a translator's output.
+std::vector<std::uint32_t> drain(midi2::ump::ump_to_midi2& t) {
+  std::vector<std::uint32_t> output;
+  while (!t.empty()) {
+    output.push_back(t.pop());
+  }
+  return output;
+}
+
+static_assert(std::is_copy_constructible_v<midi2::ump::ump_to_midi2>);
+static_assert(std::is_nothrow_move_constructible_v<midi2::ump::ump_to_midi2>);
+static_assert(!std::is_copy_assignable_v<midi2::ump::ump_to_midi2>);
+static_assert(!std::is_move_assignable_v<midi2::ump::ump_to_midi2>);
+
+// A copy of a translator has its own output and state. Messages pushed to the copy must not appear in the output of the
+// original (or vice versa).
+// NOLINTNEXTLINE
+TEST(UMPToMidi2, CopyConstructHasIndependentOutput) {
+  auto const [tune_request] = midi2::ump::system::tune_request{};
+  auto const [sysex0, sysex1] = midi2::ump::data64::sysex7_in_1{}.number_of_bytes(1).data0(0x7D);
+
+  midi2::ump::ump_to_midi2 original{0};
+  original.push(std::uint32_t{tune_request});
+  original.push(std::uint32_t{sysex0});  // The first half of a two-word message.
+
+  midi2::ump::ump_to_midi2 copy{original};  // NOLINT(performance-unnecessary-copy-initialization)
+  EXPECT_THAT(drain(copy), ElementsAre(std::uint32_t{tune_request}));
+  EXPECT_THAT(drain(original), ElementsAre(std::uint32_t{tune_request}));
+
+  // Completing the message in the copy must not produce output from the original.
+  copy.push(std::uint32_t{sysex1});
+  EXPECT_TRUE(original.empty());
+  EXPECT_THAT(drain(copy), ElementsAre(std::uint32_t{sysex0}, std::uint32_t{sysex1}));
+
+  // The original still holds its own half of the message.
+  original.push(std::uint32_t{sysex1});
+  EXPECT_TRUE(copy.empty());
+  EXPECT_THAT(drain(original), ElementsAre(std::uint32_t{sysex0}, std::uint32_t{sysex1}));
+}
+// NOLINTNEXTLINE
+TEST(UMPToMidi2, MoveConstruct) {
+  auto const [tune_request] = midi2::ump::system::tune_request{};
+  midi2::ump::ump_to_midi2 original{0};
+  original.push(std::uint32_t{tune_request});
+  midi2::ump::ump_to_midi2 moved{std::move(original)};
+  EXPECT_THAT(drain(moved), ElementsAre(std::uint32_t{tune_request}));
+  moved.push(std::uint32_t{tune_request});
+  EXPECT_THAT(drain(moved), ElementsAre(std::uint32_t{tune_request}));
 }
 
 }  // end anonymous namespace

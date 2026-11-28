@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <utility>
 
 #include "midi2/adt/fifo.hpp"
 #include "midi2/translator.hpp"
@@ -48,6 +49,21 @@ public:
     assert(group <= 0b1111);
     context_.group = group;
   }
+  /// \brief Constructs a translator with the same state as \p other.
+  /// \param other  The translator to be copied.
+  constexpr ump_to_midi2(ump_to_midi2 const& other) : context_{other.context_}, p_{other.p_} { this->attach_context(); }
+  /// \brief Constructs a translator by moving the state of \p other.
+  /// \param other  The translator whose state is to be moved.
+  constexpr ump_to_midi2(ump_to_midi2&& other) noexcept : context_{std::move(other.context_)}, p_{std::move(other.p_)} {
+    this->attach_context();
+  }
+  /// \brief Destroys the translator.
+  constexpr ~ump_to_midi2() noexcept = default;
+
+  /// Translators cannot be assigned.
+  ump_to_midi2& operator=(ump_to_midi2 const&) = delete;
+  /// Translators cannot be assigned.
+  ump_to_midi2& operator=(ump_to_midi2&&) noexcept = delete;
 
   /// \brief Checks if the output is empty
   /// \return True if the output FIFO is empty, false otherwise.
@@ -635,6 +651,12 @@ private:
     [[no_unique_address]] struct stream stream{};    ///< Handlers for UMP stream messages.
     [[no_unique_address]] struct flex_data flex{};   ///< Handlers for flex data messages.
   };
+
+  /// \brief Points the dispatcher's configuration at this translator's context.
+  ///
+  /// The dispatcher's configuration holds a pointer to context_. A copied or moved dispatcher still points at the
+  /// context of the translator from which it came, so it must be re-attached to this one.
+  constexpr void attach_context() noexcept { p_.config().context = &context_; }
 
   context context_;
   ump_dispatcher<to_midi2_config> p_{to_midi2_config{.context = &context_}};
