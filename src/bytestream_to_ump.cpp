@@ -134,14 +134,24 @@ void to_ump::push(std::byte const b) noexcept {
     } else if (d1_ != unknown) {  // Second byte
       this->convert(d0_, d1_, b);
       d1_ = unknown;
+      this->end_system_common();
     } else if (d0_ != std::byte{0U}) {  // status byte set
       if (is_one_byte_message(d0_)) {
         this->convert(d0_, b, std::byte{0U});
+        this->end_system_common();
       } else if (d0_ < to_byte(status::sysex_start) || d0_ == to_byte(status::spp)) {
         // This is the first of a two data byte message.
         d1_ = b;
       }
     }
+  }
+}
+
+void to_ump::end_system_common() noexcept {
+  // Running status applies only to channel messages. Once a System Common message (MIDI Time Code Quarter Frame, Song
+  // Position Pointer, or Song Select) is complete, any further data bytes are ignored until the next status byte.
+  if (d0_ >= to_byte(status::sysex_start)) {
+    d0_ = std::byte{0U};
   }
 }
 

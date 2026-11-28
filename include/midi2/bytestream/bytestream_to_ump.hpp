@@ -98,6 +98,8 @@ private:
 
   template <ump::mt::data64 T> void push_sysex7() noexcept;
   void sysex_data_byte(std::byte b) noexcept;
+  /// Cancels running status if the message just completed was a System Common message.
+  void end_system_common() noexcept;
 };
 
 static_assert(translator<std::byte, std::uint32_t, to_ump>);

@@ -212,6 +212,43 @@ TEST(BytestreamToUMP, SystemMessageOneByte) {
   EXPECT_THAT(convert(midi2::bytestream::to_ump{}, input), ElementsAre(UINT32_C(0x10f80000)));
 }
 
+// Running status applies only to channel messages. Data bytes which follow a complete System Common message are
+// ignored rather than producing another message with the same status.
+// NOLINTNEXTLINE
+TEST(BytestreamToUMP, TimeCodeDoesNotUseRunningStatus) {
+  constexpr std::array input{0xF1_b, 0x23_b, 0x45_b, 0x67_b};
+  auto const actual = convert(midi2::bytestream::to_ump{}, input);
+  EXPECT_THAT(actual, ElementsAre(UINT32_C(0x10F12300))) << " Actual: " << HexContainer(actual);
+}
+// NOLINTNEXTLINE
+TEST(BytestreamToUMP, SongSelectDoesNotUseRunningStatus) {
+  constexpr std::array input{0xF3_b, 0x05_b, 0x06_b};
+  auto const actual = convert(midi2::bytestream::to_ump{}, input);
+  EXPECT_THAT(actual, ElementsAre(UINT32_C(0x10F30500))) << " Actual: " << HexContainer(actual);
+}
+// NOLINTNEXTLINE
+TEST(BytestreamToUMP, SongPositionPointerDoesNotUseRunningStatus) {
+  constexpr std::array input{0xF2_b, 0x01_b, 0x02_b, 0x03_b, 0x04_b};
+  auto const actual = convert(midi2::bytestream::to_ump{}, input);
+  EXPECT_THAT(actual, ElementsAre(UINT32_C(0x10F20102))) << " Actual: " << HexContainer(actual);
+}
+// A System Common message cancels channel running status, so the data bytes which follow it are ignored even though a
+// channel message preceded it.
+// NOLINTNEXTLINE
+TEST(BytestreamToUMP, SystemCommonCancelsRunningStatus) {
+  constexpr std::array input{0x91_b, 0x40_b, 0x50_b, 0xF3_b, 0x05_b, 0x41_b, 0x51_b, 0x91_b, 0x42_b, 0x52_b};
+  auto const actual = convert(midi2::bytestream::to_ump{}, input);
+  EXPECT_THAT(actual, ElementsAre(UINT32_C(0x20914050), UINT32_C(0x10F30500), UINT32_C(0x20914252)))
+      << " Actual: " << HexContainer(actual);
+}
+// A System Real Time message in the middle of a System Common message doesn't affect it.
+// NOLINTNEXTLINE
+TEST(BytestreamToUMP, RealTimeWithinSongPositionPointer) {
+  constexpr std::array input{0xF2_b, 0x01_b, 0xF8_b, 0x02_b, 0x03_b};
+  auto const actual = convert(midi2::bytestream::to_ump{}, input);
+  EXPECT_THAT(actual, ElementsAre(UINT32_C(0x10F80000), UINT32_C(0x10F20102))) << " Actual: " << HexContainer(actual);
+}
+
 // NOLINTNEXTLINE
 TEST(BytestreamToUMP, BankAndProgramChange) {
   constexpr auto channel = 0x0F_b;   // 4 bits
