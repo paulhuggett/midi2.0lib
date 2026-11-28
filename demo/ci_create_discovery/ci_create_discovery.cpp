@@ -53,8 +53,8 @@ int main() {
     // NOLINTNEXTLINE(llvm-qualified-auto,readability-qualified-auto)
     auto const pos = midi2::ci::create_message(first, last, header, discovery);
     if (pos == last) {
-      std::cerr << "The message is larger than " << buffer_size << " bytes\n";
-      return EXIT_FAILURE;
+      std::cerr << "The message is larger than " << buffer_size << " bytes\n"; // LCOV_EXCL_LINE
+      return EXIT_FAILURE; // LCOV_EXCL_LINE
     }
     for (auto const b : std::ranges::subrange(first, pos)) {
       std::cout << std::format("{:02X} ", std::to_underlying(b));
