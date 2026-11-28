@@ -1,0 +1,28 @@
+#===-- midi2 package configuration ------------------------------------------*- CMake -*-===//
+#
+# midi2 library under the MIT license.
+# See https://github.com/paulhuggett/AM_MIDI2.0Lib/blob/main/LICENSE for license information.
+#
+# SPDX-FileCopyrightText: Copyright © 2025 Paul Bowen-Huggett
+# SPDX-License-Identifier: MIT
+#
+#===------------------------------------------------------------------------------------===//
+
+@PACKAGE_INIT@
+
+# The midi2 target links to icubaby::icubaby, so that target must exist before midi2's targets are imported. midi2's
+# build installs icubaby to the same prefix. icubaby's installation provides an export file rather than a package
+# configuration file, so look for that first. Otherwise, find an icubaby package installed in some other way.
+if(NOT TARGET icubaby::icubaby)
+  set(_midi2_icubaby_export "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/icubaby/icubaby.cmake")
+  if(EXISTS "${_midi2_icubaby_export}")
+    include("${_midi2_icubaby_export}")
+  else()
+    include(CMakeFindDependencyMacro)
+    find_dependency(icubaby)
+  endif()
+  unset(_midi2_icubaby_export)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/midi2-targets.cmake")
+check_required_components(midi2)
